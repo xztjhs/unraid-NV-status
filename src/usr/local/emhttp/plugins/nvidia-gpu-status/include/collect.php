@@ -136,11 +136,66 @@ function nvgpu_parse_fast(string $line): ?array {
   ];
 }
 
+/* ---------------------------------------------------------------- 进程归属解析
+ *
+ * 把 nvidia-smi 报的 host pid 映射到 docker 容器名 / libvirt 虚拟机名。
+ * 慢层调用（每 SLOW_SEC 秒），不进快层——docker ps + 遍历 /proc 不适合秒级。
+ */
+
+function nvgpu_pid_owners(): array {
+  $containers = [];
+  // --no-trunc 拿全 ID，才能和 cgroup 里的 64 位 ID 直接比对
+  $out = @shell_exec('timeout 4 docker ps --no-trunc --format "{{.ID}}|{{.Names}}" 2>/dev/null');
+  if (is_string($out) && $out !== '') {
+    foreach (explode("\n", trim($out)) as $line) {
+      $p = explode('|', $line, 2);
+      if (count($p) === 2 && $p[0] !== '' && $p[1] !== '') $containers[trim($p[0])] = trim($p[1]);
+    }
+  }
+
+  // VM：qemu 进程的 cmdline 里带 -name guest=<name>
+  $vms = [];
+  foreach (glob('/proc/[0-9]*/cmdline') ?: [] as $f) {
+    $c = @file_get_contents($f);
+    if (!is_string($c) || strpos($c, 'qemu-system') === false) continue;
+    if (preg_match('/guest=([^,\x00]+)/', $c, $m)) {
+      $vms[(int)basename(dirname($f))] = $m[1];
+    }
+  }
+
+  return ['containers' => $containers, 'vms' => $vms];
+}
+
+function nvgpu_pid_scope(int $pid, array $owners): array {
+  // 1) 容器：/proc/<pid>/cgroup 形如 0::/docker/<64hex>
+  $cg = @file_get_contents("/proc/$pid/cgroup");
+  if (is_string($cg) && preg_match('#/docker/([0-9a-f]{64})#', $cg, $m)) {
+    $cid = $m[1];
+    foreach ($owners['containers'] as $full => $name) {
+      if (strpos($full, $cid) === 0 || strpos($cid, $full) === 0) {
+        return ['kind' => 'container', 'name' => $name];
+      }
+    }
+    return ['kind' => 'container', 'name' => substr($cid, 0, 12)];
+  }
+
+  // 2) 虚拟机：沿父进程链找 qemu（GPU 进程通常是 qemu 的子进程）
+  $cur = $pid;
+  for ($i = 0; $i < 25 && $cur > 1; $i++) {
+    if (isset($owners['vms'][$cur])) return ['kind' => 'vm', 'name' => $owners['vms'][$cur]];
+    $st = @file_get_contents("/proc/$cur/status");
+    if (!is_string($st) || !preg_match('/^PPid:\s+(\d+)/m', $st, $mm)) break;
+    $cur = (int)$mm[1];
+  }
+
+  return ['kind' => 'host', 'name' => ''];
+}
+
 /* ---------------------------------------------------------------- 慢层解析 (-q -x) */
 
-function nvgpu_slow_collect(): array {
-  $xml = @shell_exec('timeout 8 nvidia-smi -q -x 2>/dev/null');
-  if (!is_string($xml) || $xml === '') return ['ok' => false, 'gpus' => []];
+/** 解析 nvidia-smi -q -x 的 XML 文本（daemon 与 api 共用，单一事实来源） */
+function nvgpu_parse_slow_xml(string $xml): array {
+  if ($xml === '') return ['ok' => false, 'gpus' => []];
 
   // 抑制 XML 解析告警（-q -x 偶尔带非法字符）
   $prev = libxml_use_internal_errors(true);
@@ -149,39 +204,40 @@ function nvgpu_slow_collect(): array {
   libxml_use_internal_errors($prev);
   if ($doc === false) return ['ok' => false, 'gpus' => []];
 
+  $owners = null;
   $out = [];
   foreach ($doc->gpu as $g) {
     $idx = (int)(string)$g->minor_number;
     $r = [
-      'index'          => $idx,
-      'ecc_mode'       => nvgpu_str((string)($g->ecc_mode->current_ecc ?? '')),
-      'ecc_pending'    => nvgpu_str((string)($g->ecc_mode->pending_ecc ?? '')),
-      'ecc_corr_vol'   => nvgpu_num((string)($g->ecc_errors->volatile->dram_correctable ?? '')),
-      'ecc_uncorr_vol' => nvgpu_num((string)($g->ecc_errors->volatile->dram_uncorrectable ?? '')),
-      'ecc_corr_agg'   => nvgpu_num((string)($g->ecc_errors->aggregate->dram_correctable ?? '')),
-      'ecc_uncorr_agg' => nvgpu_num((string)($g->ecc_errors->aggregate->dram_uncorrectable ?? '')),
-      'sram_corr_vol'  => nvgpu_num((string)($g->ecc_errors->volatile->sram_correctable ?? '')),
-      'sram_uncorr_vol'=> nvgpu_num((string)($g->ecc_errors->volatile->sram_uncorrectable_secded ?? '')),
-      'retired_sbe'    => nvgpu_num((string)($g->retired_pages->multiple_single_bit_retirement->retired_count ?? '')),
-      'retired_dbe'    => nvgpu_num((string)($g->retired_pages->double_bit_retirement->retired_count ?? '')),
-      'retired_pending'=> nvgpu_str((string)($g->retired_pages->pending_retirement ?? '')),
+      'index'               => $idx,
+      'ecc_mode'            => nvgpu_str((string)($g->ecc_mode->current_ecc ?? '')),
+      'ecc_pending'         => nvgpu_str((string)($g->ecc_mode->pending_ecc ?? '')),
+      'ecc_corr_vol'        => nvgpu_num((string)($g->ecc_errors->volatile->dram_correctable ?? '')),
+      'ecc_uncorr_vol'      => nvgpu_num((string)($g->ecc_errors->volatile->dram_uncorrectable ?? '')),
+      'ecc_corr_agg'        => nvgpu_num((string)($g->ecc_errors->aggregate->dram_correctable ?? '')),
+      'ecc_uncorr_agg'      => nvgpu_num((string)($g->ecc_errors->aggregate->dram_uncorrectable ?? '')),
+      'sram_corr_vol'       => nvgpu_num((string)($g->ecc_errors->volatile->sram_correctable ?? '')),
+      'sram_uncorr_vol'     => nvgpu_num((string)($g->ecc_errors->volatile->sram_uncorrectable_secded ?? '')),
+      'retired_sbe'         => nvgpu_num((string)($g->retired_pages->multiple_single_bit_retirement->retired_count ?? '')),
+      'retired_dbe'         => nvgpu_num((string)($g->retired_pages->double_bit_retirement->retired_count ?? '')),
+      'retired_pending'     => nvgpu_str((string)($g->retired_pages->pending_retirement ?? '')),
       'remap_correctable'   => nvgpu_num((string)($g->remapped_rows->remapped_row_corr ?? '')),
       'remap_uncorrectable' => nvgpu_num((string)($g->remapped_rows->remapped_row_unc ?? '')),
       'remap_pending'       => nvgpu_str((string)($g->remapped_rows->remapped_row_pending ?? '')),
       'remap_failure'       => nvgpu_str((string)($g->remapped_rows->remapped_row_failure ?? '')),
-      'replay'         => nvgpu_num((string)($g->pci->replay_counter ?? '')),
-      'replay_rollover'=> nvgpu_num((string)($g->pci->replay_rollover_counter ?? '')),
-      'pcie_tx'        => nvgpu_str((string)($g->pci->tx_util ?? '')),
-      'pcie_rx'        => nvgpu_str((string)($g->pci->rx_util ?? '')),
-      'enc_sessions'   => nvgpu_num((string)($g->encoder_stats->session_count ?? '')),
-      'enc_fps'        => nvgpu_num((string)($g->encoder_stats->average_fps ?? '')),
-      'enc_latency'    => nvgpu_num((string)($g->encoder_stats->average_latency ?? '')),
-      'fb_total'       => nvgpu_num((string)($g->fb_memory_usage->total ?? '')),
-      'bar1_total'     => nvgpu_num((string)($g->bar1_memory_usage->total ?? '')),
-      'bar1_used'      => nvgpu_num((string)($g->bar1_memory_usage->used ?? '')),
-      'inforom_image'  => nvgpu_str((string)($g->inforom_version->image_version ?? '')),
-      'processes'      => [],
-      'throttle'       => [],
+      'replay'              => nvgpu_num((string)($g->pci->replay_counter ?? '')),
+      'replay_rollover'     => nvgpu_num((string)($g->pci->replay_rollover_counter ?? '')),
+      'pcie_tx'             => nvgpu_str((string)($g->pci->tx_util ?? '')),
+      'pcie_rx'             => nvgpu_str((string)($g->pci->rx_util ?? '')),
+      'enc_sessions'        => nvgpu_num((string)($g->encoder_stats->session_count ?? '')),
+      'enc_fps'             => nvgpu_num((string)($g->encoder_stats->average_fps ?? '')),
+      'enc_latency'         => nvgpu_num((string)($g->encoder_stats->average_latency ?? '')),
+      'fb_total'            => nvgpu_num((string)($g->fb_memory_usage->total ?? '')),
+      'bar1_total'          => nvgpu_num((string)($g->bar1_memory_usage->total ?? '')),
+      'bar1_used'           => nvgpu_num((string)($g->bar1_memory_usage->used ?? '')),
+      'inforom_image'       => nvgpu_str((string)($g->inforom_version->image_version ?? '')),
+      'processes'           => [],
+      'throttle'            => [],
     ];
 
     // 降频原因（明细比位掩码可读）
@@ -193,16 +249,21 @@ function nvgpu_slow_collect(): array {
       }
     }
 
-    // 进程占用
+    // 进程占用 + 归属（docker 容器 / libvirt 虚拟机 / 宿主机）
     if (isset($g->processes->process_info)) {
+      if ($owners === null) $owners = nvgpu_pid_owners();  // 一次 XML 只查一遍
       foreach ($g->processes->process_info as $p) {
-        $mem = nvgpu_num((string)($p->used_memory ?? ''));
+        $pid   = (int)(string)$p->pid;
+        $path  = nvgpu_str((string)($p->process_name ?? ''));
+        $scope = nvgpu_pid_scope($pid, $owners);
         $r['processes'][] = [
-          'pid'  => (int)(string)$p->pid,
-          'name' => nvgpu_str(basename((string)($p->process_name ?? ''))),
-          'path' => nvgpu_str((string)($p->process_name ?? '')),
-          'type' => nvgpu_str((string)($p->type ?? '')),
-          'mem'  => $mem,
+          'pid'       => $pid,
+          'name'      => nvgpu_str(basename((string)($path ?? ''))),
+          'path'      => $path,
+          'type'      => nvgpu_str((string)($p->type ?? '')),
+          'mem'       => nvgpu_num((string)($p->used_memory ?? '')),
+          'owner'     => $scope['name'],
+          'ownerKind' => $scope['kind'],
         ];
       }
       usort($r['processes'], fn($a, $b) => ($b['mem'] ?? 0) <=> ($a['mem'] ?? 0));
@@ -211,6 +272,12 @@ function nvgpu_slow_collect(): array {
     $out[$idx] = $r;
   }
   return ['ok' => true, 'ts' => microtime(true), 'gpus' => $out];
+}
+
+function nvgpu_slow_collect(): array {
+  $xml = @shell_exec('timeout 8 nvidia-smi -q -x 2>/dev/null');
+  if (!is_string($xml) || $xml === '') return ['ok' => false, 'gpus' => []];
+  return nvgpu_parse_slow_xml($xml);
 }
 
 /* ---------------------------------------------------------------- 合并 */

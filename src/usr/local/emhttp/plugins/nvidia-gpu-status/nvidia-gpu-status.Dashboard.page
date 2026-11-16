@@ -10,6 +10,9 @@ Icon="microchip"
  * ⚠️ 磁贴内不得出现嵌套 <table>/<tbody>：
  *    Unraid 的 addProperties() 会对 div.frame 下每个 tbody 执行 attr('title').md5()，
  *    没有 title 的内层 tbody 会抛异常，导致整页 tile 初始化中断。全部用 div。
+ *
+ * 字体/间距对齐 dynamix 的 Processor / Interface tile：
+ *    行高 2.4rem，label 用 .w26 宽度，数值与条状图用 .usage-disk。
  */
 $plugin = 'nvidia-gpu-status';
 
@@ -39,7 +42,7 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 if (!$hasSmi) {
   $mytiles[$plugin][$column] = '<tbody title="' . $h($L['title']) . ' Status">'
     . '<tr><td>' . $h($L['title']) . '</td></tr>'
-    . '<tr><td><div class="nvgpu-tile nvgpu-missing">' . $h($L['missing']) . '</div></td></tr>'
+    . '<tr><td><div class="nvgpu-missing">' . $h($L['missing']) . '</div></td></tr>'
     . '</tbody>';
   return;
 }
@@ -76,57 +79,91 @@ $boot = $h(json_encode([
 $tileTitle = $h($L['title']) . ' Status';
 
 $mytiles[$plugin][$column] = <<<EOT
-<tbody title="{$tileTitle}">
-<tr><td>{$h($L['title'])}</td></tr>
+<tbody title="{$tileTitle}" id="nvgpu-tile" data-boot="{$boot}">
 <tr><td>
-<div class="nvgpu-tile" id="nvgpu-root" data-boot="{$boot}">
-  <div class="nvgpu-head">
-    <span class="nvgpu-name" id="nvgpu-name">GPU</span>
-    <span class="nvgpu-badge" id="nvgpu-pstate" title="{$h($L['pstate'])}">–</span>
-    <span class="nvgpu-badge" id="nvgpu-health" title="{$h($L['health'])}">–</span>
-    <span class="nvgpu-ctl">
-      <select id="nvgpu-refresh" class="nvgpu-sel" title="{$h($L['refresh'])}">{$refreshOpts}</select>
-      <select id="nvgpu-window" class="nvgpu-sel" title="{$h($L['window'])}">{$windowOpts}</select>
-      <i class="fa fa-pause hand" id="nvgpu-pause" title="{$h($L['pause'])}"></i>
-      <a href="/Settings/nvidia-gpu-status" title="{$h($L['settings'])}"><i class="fa fa-cog"></i></a>
+  <span class="tile-header">
+    <span class="tile-header-left">
+      <i class="icon-performance f32"></i>
+      <div class="section">
+        <h3 class="tile-header-main" id="nvgpu-name">GPU</h3>
+        <span class="nvgpu-sub" id="nvgpu-sub">–</span>
+      </div>
     </span>
-  </div>
+    <span class="tile-header-right">
+      <span class="tile-header-right-controls nvgpu-ctl">
+        <select id="nvgpu-refresh" class="nvgpu-sel" title="{$h($L['refresh'])}">{$refreshOpts}</select>
+        <select id="nvgpu-window" class="nvgpu-sel" title="{$h($L['window'])}">{$windowOpts}</select>
+        <i class="fa fa-fw fa-pause control hand" id="nvgpu-pause" title="{$h($L['pause'])}"></i>
+        <a href="/Settings/nvidia-gpu-status" title="{$h($L['settings'])}"><i class="fa fa-fw fa-cog control"></i></a>
+      </span>
+    </span>
+  </span>
+</td></tr>
 
-  <div class="nvgpu-grid">
-    <div class="nvgpu-metric">
-      <span class="nvgpu-k">{$h($L['gpu'])}</span>
-      <span class="nvgpu-v" id="nvgpu-gpu">–</span>
-      <canvas class="nvgpu-spark" id="nvgpu-spark-gpu" width="220" height="34"></canvas>
-    </div>
-    <div class="nvgpu-metric">
-      <span class="nvgpu-k">{$h($L['temp'])}</span>
-      <span class="nvgpu-v" id="nvgpu-temp">–</span>
-      <canvas class="nvgpu-spark" id="nvgpu-spark-temp" width="220" height="34"></canvas>
-    </div>
-    <div class="nvgpu-metric">
-      <span class="nvgpu-k">{$h($L['mem'])}</span>
-      <span class="nvgpu-v" id="nvgpu-mem">–</span>
-      <canvas class="nvgpu-spark" id="nvgpu-spark-mem" width="220" height="34"></canvas>
-      <div class="nvgpu-bar"><i id="nvgpu-membar"></i></div>
-    </div>
+<tr><td>
+  <div class="nvgpu-kv">
+    <span class="nvgpu-k">{$h($L['gpu'])}</span>
+    <span class="nvgpu-pct" id="nvgpu-gpu">0%</span>
+    <span class="usage-disk"><span id="nvgpu-fill-gpu" class="nvgpu-fill"></span></span>
   </div>
+</td></tr>
 
-  <div class="nvgpu-rows">
-    <div class="nvgpu-row"><b>{$h($L['fan'])}</b><span id="nvgpu-fan">–</span></div>
-    <div class="nvgpu-row"><b>{$h($L['power'])}</b><span id="nvgpu-power">–</span></div>
-    <div class="nvgpu-row"><b>{$h($L['clocks'])}</b><span id="nvgpu-clocks">–</span></div>
-    <div class="nvgpu-row"><b>{$h($L['pcie'])}</b><span id="nvgpu-pcie">–</span></div>
-    <div class="nvgpu-row"><b>{$h($L['codec'])}</b><span id="nvgpu-codec">–</span></div>
-    <div class="nvgpu-row"><b>{$h($L['ecc'])}</b><span id="nvgpu-ecc">–</span></div>
-    <div class="nvgpu-row nvgpu-procs"><b>{$h($L['processes'])}</b><span id="nvgpu-procs">–</span></div>
+<tr><td>
+  <div class="nvgpu-kv">
+    <span class="nvgpu-k">{$h($L['temp'])}</span>
+    <span class="nvgpu-pct" id="nvgpu-temp">–</span>
+    <span class="usage-disk"><span id="nvgpu-fill-temp" class="nvgpu-fill"></span></span>
   </div>
+</td></tr>
 
+<tr><td>
+  <div class="nvgpu-kv">
+    <span class="nvgpu-k">{$h($L['mem'])}</span>
+    <span class="nvgpu-pct" id="nvgpu-mem">–</span>
+    <span class="usage-disk"><span id="nvgpu-fill-mem" class="nvgpu-fill"></span></span>
+  </div>
+</td></tr>
+
+<tr class="nvgpu-chart-row"><td>
+  <canvas class="nvgpu-chart" id="nvgpu-chart" height="96"></canvas>
+  <div class="nvgpu-legend">
+    <span><i class="nvgpu-dot" style="background:#5aa9e6"></i>{$h($L['gpu'])}</span>
+    <span><i class="nvgpu-dot" style="background:#8f7ee6"></i>{$h($L['mem'])}</span>
+    <span><i class="nvgpu-dot" style="background:#e6805a"></i>{$h($L['temp'])}</span>
+  </div>
+</td></tr>
+
+<tr><td>
+  <div class="nvgpu-kv"><span class="nvgpu-k">{$h($L['fan'])}</span><span class="nvgpu-val" id="nvgpu-fan">–</span></div>
+</td></tr>
+<tr><td>
+  <div class="nvgpu-kv"><span class="nvgpu-k">{$h($L['power'])}</span><span class="nvgpu-val" id="nvgpu-power">–</span></div>
+</td></tr>
+<tr><td>
+  <div class="nvgpu-kv"><span class="nvgpu-k">{$h($L['clocks'])}</span><span class="nvgpu-val" id="nvgpu-clocks">–</span></div>
+</td></tr>
+<tr><td>
+  <div class="nvgpu-kv"><span class="nvgpu-k">{$h($L['pcie'])}</span><span class="nvgpu-val" id="nvgpu-pcie">–</span></div>
+</td></tr>
+<tr><td>
+  <div class="nvgpu-kv"><span class="nvgpu-k">{$h($L['codec'])}</span><span class="nvgpu-val" id="nvgpu-codec">–</span></div>
+</td></tr>
+<tr><td>
+  <div class="nvgpu-kv"><span class="nvgpu-k">{$h($L['ecc'])}</span><span class="nvgpu-val" id="nvgpu-ecc">–</span></div>
+</td></tr>
+
+<tr class="nvgpu-proc-head" id="nvgpu-proc-head"><td>{$h($L['processes'])}</td></tr>
+<tr class="nvgpu-proc-colhead" id="nvgpu-proc-colhead"><td>
+  <span class="nvgpu-pc nvgpu-pc-idx">#</span><span class="nvgpu-pc nvgpu-pc-owner">{$h($L['p_owner'])}</span><span class="nvgpu-pc nvgpu-pc-mem">{$h($L['p_mem'])}</span><span class="nvgpu-pc nvgpu-pc-cmd">{$h($L['p_cmd'])}</span>
+</td></tr>
+<tr id="nvgpu-proc-rows"><td><div class="nvgpu-proclist" id="nvgpu-procs"><span class="nvgpu-dim">–</span></div></td></tr>
+
+<tr><td>
   <div class="nvgpu-flags" id="nvgpu-flags" style="display:none"></div>
-  <div class="nvgpu-foot">
+  <span class="nvgpu-foot">
     <span id="nvgpu-age">–</span>
     <span id="nvgpu-mode" class="nvgpu-mode"></span>
-  </div>
-</div>
+  </span>
 </td></tr>
 </tbody>
 EOT;
@@ -137,7 +174,7 @@ EOT;
   var tries = 0;
   function go() {
     if (window.NVGPU && typeof window.NVGPU.boot === 'function') {
-      window.NVGPU.boot(document.getElementById('nvgpu-root'));
+      window.NVGPU.boot(document.getElementById('nvgpu-name'));
       return true;
     }
     return false;

@@ -2,8 +2,8 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "nvidia-gpu-status">
 <!ENTITY author    "xztjhs">
-<!ENTITY version   "2026.11.16">
-<!ENTITY pkgver    "nvidia-gpu-status-2026.11.16-x86_64-1">
+<!ENTITY version   "2026.11.16b">
+<!ENTITY pkgver    "nvidia-gpu-status-2026.11.16b-x86_64-1">
 <!ENTITY launch    "Settings/nvidia-gpu-status">
 <!ENTITY raw       "https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main">
 <!ENTITY plgPATH   "/boot/config/plugins/&name;">
@@ -13,7 +13,7 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&raw;/plugin/&name;.plg" launch="&launch;" icon="microchip" min="7.0.0" support="https://github.com/xztjhs/@REPO@/issues">
 
 <CHANGES>
-### 2026.11.16
+### 2026.11.16b
 - 首个版本：Unraid Dashboard 实时 GPU 磁贴
 - 指标：利用率（GPU/显存/编码/解码）、温度、风扇、功耗、显存、频率、PCIe 速率与宽度、ECC 计数、行重映射、PCIe replay、编码会话、进程显存占用
 - 刷新间隔 0.5–10 秒可调，历史窗口 1–60 分钟可调（磁贴右上角即时切换，设置页改默认值）
@@ -48,8 +48,8 @@ exit 0
 <!-- 2. 下载并安装软件包 -->
 <FILE Name="&plgPATH;/&pkgver;.txz" Run="upgradepkg --install-new">
 <URL>&raw;/archive/&pkgver;.txz</URL>
-<MD5>55af2e63fb067b0fbd3b3c92b8be6799</MD5>
-<SHA256>5e6a66ea884fc9b85cc6bd94e968f7a037ae1b4ce377a99432a487035bad2101</SHA256>
+<MD5>850c4fb4f2ae7df78bcd41fbc2b57158</MD5>
+<SHA256>0300d7ac28b99463314fe7adeb8b37d9f1d03e1a393b8e10846019778342a1f7</SHA256>
 </FILE>
 
 <!-- 3. 配置与服务 -->

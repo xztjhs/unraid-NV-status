@@ -85,72 +85,6 @@ function close_child(?array &$c): void {
   $c = null;
 }
 
-/* 复用 collect.php 里的 XML 解析：给它一个字符串入口 */
-function parse_slow_xml(string $xml): array {
-  $prev = libxml_use_internal_errors(true);
-  $doc = simplexml_load_string($xml);
-  libxml_clear_errors();
-  libxml_use_internal_errors($prev);
-  if ($doc === false) return ['ok' => false, 'gpus' => []];
-  // 借用 nvgpu_slow_collect 的字段映射：临时落盘再读代价高，这里直接内联精简版
-  $out = [];
-  foreach ($doc->gpu as $g) {
-    $idx = (int)(string)$g->minor_number;
-    $r = [
-      'index'               => $idx,
-      'ecc_mode'            => nvgpu_str((string)($g->ecc_mode->current_ecc ?? '')),
-      'ecc_pending'         => nvgpu_str((string)($g->ecc_mode->pending_ecc ?? '')),
-      'ecc_corr_vol'        => nvgpu_num((string)($g->ecc_errors->volatile->dram_correctable ?? '')),
-      'ecc_uncorr_vol'      => nvgpu_num((string)($g->ecc_errors->volatile->dram_uncorrectable ?? '')),
-      'ecc_corr_agg'        => nvgpu_num((string)($g->ecc_errors->aggregate->dram_correctable ?? '')),
-      'ecc_uncorr_agg'      => nvgpu_num((string)($g->ecc_errors->aggregate->dram_uncorrectable ?? '')),
-      'sram_corr_vol'       => nvgpu_num((string)($g->ecc_errors->volatile->sram_correctable ?? '')),
-      'sram_uncorr_vol'     => nvgpu_num((string)($g->ecc_errors->volatile->sram_uncorrectable_secded ?? '')),
-      'retired_sbe'         => nvgpu_num((string)($g->retired_pages->multiple_single_bit_retirement->retired_count ?? '')),
-      'retired_dbe'         => nvgpu_num((string)($g->retired_pages->double_bit_retirement->retired_count ?? '')),
-      'retired_pending'     => nvgpu_str((string)($g->retired_pages->pending_retirement ?? '')),
-      'remap_correctable'   => nvgpu_num((string)($g->remapped_rows->remapped_row_corr ?? '')),
-      'remap_uncorrectable' => nvgpu_num((string)($g->remapped_rows->remapped_row_unc ?? '')),
-      'remap_pending'       => nvgpu_str((string)($g->remapped_rows->remapped_row_pending ?? '')),
-      'remap_failure'       => nvgpu_str((string)($g->remapped_rows->remapped_row_failure ?? '')),
-      'replay'              => nvgpu_num((string)($g->pci->replay_counter ?? '')),
-      'replay_rollover'     => nvgpu_num((string)($g->pci->replay_rollover_counter ?? '')),
-      'pcie_tx'             => nvgpu_str((string)($g->pci->tx_util ?? '')),
-      'pcie_rx'             => nvgpu_str((string)($g->pci->rx_util ?? '')),
-      'enc_sessions'        => nvgpu_num((string)($g->encoder_stats->session_count ?? '')),
-      'enc_fps'             => nvgpu_num((string)($g->encoder_stats->average_fps ?? '')),
-      'enc_latency'         => nvgpu_num((string)($g->encoder_stats->average_latency ?? '')),
-      'fb_total'            => nvgpu_num((string)($g->fb_memory_usage->total ?? '')),
-      'bar1_total'          => nvgpu_num((string)($g->bar1_memory_usage->total ?? '')),
-      'bar1_used'           => nvgpu_num((string)($g->bar1_memory_usage->used ?? '')),
-      'inforom_image'       => nvgpu_str((string)($g->inforom_version->image_version ?? '')),
-      'processes'           => [],
-      'throttle'            => [],
-    ];
-    if (isset($g->clocks_event_reasons)) {
-      foreach ($g->clocks_event_reasons->children() as $k => $v) {
-        if (strtolower(trim((string)$v)) === 'active') {
-          $r['throttle'][] = str_replace('clocks_event_reason_', '', $k);
-        }
-      }
-    }
-    if (isset($g->processes->process_info)) {
-      foreach ($g->processes->process_info as $p) {
-        $r['processes'][] = [
-          'pid'  => (int)(string)$p->pid,
-          'name' => nvgpu_str(basename((string)($p->process_name ?? ''))),
-          'path' => nvgpu_str((string)($p->process_name ?? '')),
-          'type' => nvgpu_str((string)($p->type ?? '')),
-          'mem'  => nvgpu_num((string)($p->used_memory ?? '')),
-        ];
-      }
-      usort($r['processes'], fn($a, $b) => ($b['mem'] ?? 0) <=> ($a['mem'] ?? 0));
-    }
-    $out[$idx] = $r;
-  }
-  return ['ok' => true, 'ts' => microtime(true), 'gpus' => $out];
-}
-
 /* ---------------------------------------------------------------- 主循环 */
 
 $sampleMs  = max(200, min(10000, (int)$cfg['SAMPLE_MS']));
@@ -273,7 +207,7 @@ while (true) {
     if ($chunk === '' || $chunk === false) {
       if (@feof($slow['out'])) {
         if (strpos($slow['buf'], '</nvidia_smi_log>') !== false) {
-          $parsed = parse_slow_xml($slow['buf']);
+          $parsed = nvgpu_parse_slow_xml($slow['buf']);
           if ($parsed['ok']) { $slowData = $parsed; }
           else nvlog('slow xml parse failed');
         } else {

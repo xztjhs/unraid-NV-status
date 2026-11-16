@@ -46,6 +46,12 @@ function nvgpu_labels(?string $locale = null): array {
     'ok'           => 'ok',
     'warn'         => 'warn',
     'error'        => 'error',
+    /* 进程表表头 */
+    'p_owner'      => 'Container / VM',
+    'p_mem'        => 'VRAM',
+    'p_cmd'        => 'Command',
+    'host'         => 'host',
+    'sub'          => 'driver %s · %s',
     /* 告警文案 */
     'flag_temp'          => 'GPU temperature %s°C ≥ %s°C',
     'flag_ecc_uncorr'    => 'ECC uncorrected errors: %s (volatile)',
@@ -101,6 +107,12 @@ function nvgpu_labels(?string $locale = null): array {
     'ok'           => '正常',
     'warn'         => '警告',
     'error'        => '异常',
+    /* 进程表表头 */
+    'p_owner'      => '容器 / 虚拟机',
+    'p_mem'        => '显存占用',
+    'p_cmd'        => '命令 / 程序',
+    'host'         => '宿主机',
+    'sub'          => '驱动 %s · %s',
     /* 告警文案 */
     'flag_temp'          => 'GPU 温度 %s°C ≥ %s°C',
     'flag_ecc_uncorr'    => 'ECC 未纠正错误 %s（volatile）',

@@ -18,13 +18,9 @@
     last: null,
     hist: { gpu: [], mem: [], temp: [] },
     mode: 'init',
-    lastFetch: 0
+    lastFetch: 0,
+    root: null
   };
-
-  function t(k, dflt) {
-    var v = state.L && state.L[k];
-    return (v === undefined || v === null || v === '') ? (dflt === undefined ? k : dflt) : v;
-  }
 
   function q(id) { return document.getElementById(id); }
   function esc(s) {
@@ -36,63 +32,145 @@
     if (v === null || v === undefined || v === '' || isNaN(v)) return '–';
     return Number(v).toFixed(digits === undefined ? 0 : digits);
   }
-  function pct(v) { return (v === null || v === undefined) ? '–' : num(v) + '%'; }
+  function t(k, dflt) {
+    var v = state.L && state.L[k];
+    return (v === undefined || v === null || v === '') ? (dflt === undefined ? k : dflt) : v;
+  }
+
+  /* ---------------------------------------------------------- 条形指标 */
+
+  function setBar(idPct, idFill, text, pct, warn, bad) {
+    var pe = q(idPct), fe = q(idFill);
+    if (pe) {
+      pe.textContent = text;
+      pe.className = 'nvgpu-pct' + (bad ? ' is-bad' : (warn ? ' is-warn' : ''));
+    }
+    if (fe) {
+      fe.style.width = (pct === null || pct === undefined ? 0 : Math.max(0, Math.min(100, pct))) + '%';
+      fe.className = 'nvgpu-fill' + (bad ? ' is-bad' : (warn ? ' is-warn' : ''));
+    }
+  }
 
   /* ---------------------------------------------------------- 折线图 */
 
-  function drawSpark(canvas, series, opts) {
-    if (!canvas || !canvas.getContext) return;
+  function drawChart() {
+    var c = q('nvgpu-chart');
+    if (!c || !c.getContext) return;
     var dpr = window.devicePixelRatio || 1;
-    var w = canvas.clientWidth || 220;
-    var h = canvas.clientHeight || 34;
-    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+    var w = c.clientWidth || 360;
+    var h = 96;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
     }
-    var ctx = canvas.getContext('2d');
+    var ctx = c.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    var pts = series.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
-    if (pts.length < 2) return;
+    // 绘制顺序：温度 → 显存 → GPU（GPU 最后画，压在底层之上）
+    var series = [
+      { data: state.hist.temp, color: '#e6805a', scale: 'temp' },
+      { data: state.hist.mem,  color: '#8f7ee6' },
+      { data: state.hist.gpu,  color: '#5aa9e6' }
+    ];
 
-    var min = opts && opts.min !== undefined ? opts.min : Math.min.apply(null, pts);
-    var max = opts && opts.max !== undefined ? opts.max : Math.max.apply(null, pts);
-    if (max === min) { max = min + 1; }
-    var pad = 2;
-    var n = pts.length;
-    var xs = function (i) { return (i / (n - 1)) * (w - 2) + 1; };
-    var ys = function (v) { return h - pad - ((v - min) / (max - min)) * (h - pad * 2); };
+    var pad = 3;
+    var tw = (state.last && state.last.cfg && state.last.cfg.temp_warn) || 85;
 
-    var color = (opts && opts.color) || '#5aa9e6';
-    var grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, color + '66');
-    grad.addColorStop(1, color + '05');
+    // 温度标尺动态跟随实际区间：空闲时温度远低于告警线，固定 [tw-50, tw+5] 会把线压到底部看不出变化
+    var temps = (state.hist.temp || []).filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
+    var tempMin = 20, tempMax = tw + 5;
+    if (temps.length) {
+      var tlo = Math.min.apply(null, temps), thi = Math.max.apply(null, temps);
+      tempMin = Math.max(0, Math.min(tlo - 5, tw - 30));
+      tempMax = Math.max(tw + 5, thi + 5);
+      if (tempMax - tempMin < 20) tempMax = tempMin + 20;   // 避免量程过窄导致噪声放大
+    }
 
-    ctx.beginPath();
-    ctx.moveTo(xs(0), ys(pts[0]));
-    for (var i = 1; i < n; i++) ctx.lineTo(xs(i), ys(pts[i]));
-    ctx.lineTo(xs(n - 1), h);
-    ctx.lineTo(xs(0), h);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
+    // 网格线（0/50/100%）
+    ctx.strokeStyle = 'rgba(128,128,128,.14)';
+    ctx.lineWidth = 1;
+    [0, 0.5, 1].forEach(function (f) {
+      var y = Math.round(h - pad - f * (h - pad * 2)) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    });
 
-    ctx.beginPath();
-    ctx.moveTo(xs(0), ys(pts[0]));
-    for (var j = 1; j < n; j++) ctx.lineTo(xs(j), ys(pts[j]));
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.4;
-    ctx.lineJoin = 'round';
-    ctx.stroke();
+    series.forEach(function (s) {
+      var pts = (s.data || []).filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
+      if (pts.length < 2) return;
+
+      var lo, hi;
+      if (s.scale === 'temp') { lo = tempMin; hi = tempMax; }
+      else { lo = 0; hi = 100; }
+
+      var n = pts.length;
+      var xs = function (i) { return (i / (n - 1)) * (w - 2) + 1; };
+      var ys = function (v) {
+        var r = (v - lo) / (hi - lo);
+        r = Math.max(0, Math.min(1, r));
+        return h - pad - r * (h - pad * 2);
+      };
+
+      ctx.beginPath();
+      ctx.moveTo(xs(0), ys(pts[0]));
+      for (var i = 1; i < n; i++) ctx.lineTo(xs(i), ys(pts[i]));
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      // 末端点
+      ctx.beginPath();
+      ctx.arc(xs(n - 1), ys(pts[n - 1]), 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.fill();
+    });
+  }
+
+  /* ---------------------------------------------------------- 进程表 */
+
+  function renderProcesses(g) {
+    var box = q('nvgpu-procs');
+    if (!box) return;
+    var show = !state.last || !state.last.cfg || state.last.cfg.show_proc !== false;
+    if (!show) {
+      box.innerHTML = '<span class="nvgpu-dim">' + esc(t('proc_off')) + '</span>';
+      return;
+    }
+    var procs = (g.processes || []).slice();
+    if (!procs.length) {
+      box.innerHTML = '<span class="nvgpu-dim">' + esc(t('no_proc')) + '</span>';
+      return;
+    }
+    // 按显存降序，序号即排序位次
+    procs.sort(function (a, b) { return (b.mem || 0) - (a.mem || 0); });
+
+    box.innerHTML = procs.map(function (p, i) {
+      var kind = p.ownerKind || 'host';
+      var ownerCls = 'nvgpu-own-tag nvgpu-own-' + (kind === 'container' ? 'container' : kind === 'vm' ? 'vm' : 'host');
+      var ownerTxt = p.owner ? p.owner : t('host');
+      var mem = (p.mem === null || p.mem === undefined)
+        ? '–'
+        : (p.mem >= 1024 ? num(p.mem / 1024, 1) + ' GB' : num(p.mem) + ' MB');
+      var cmd = p.path || p.name || ('pid ' + p.pid);
+      return '<div class="nvgpu-proc-row" title="PID ' + esc(p.pid) + (p.type ? ' · ' + esc(p.type) : '') + '">'
+        + '<span class="nvgpu-pc-idx">' + (i + 1) + '</span>'
+        + '<span class="nvgpu-pc-owner"><span class="' + ownerCls + '">' + esc(kind === 'container' ? 'CT' : kind === 'vm' ? 'VM' : '') + '</span>' + esc(ownerTxt) + '</span>'
+        + '<span class="nvgpu-pc-mem">' + esc(mem) + '</span>'
+        + '<span class="nvgpu-pc-cmd">' + esc(cmd) + '</span>'
+        + '</div>';
+    }).join('');
   }
 
   /* ---------------------------------------------------------- 渲染 */
 
   function render(snap) {
     if (!snap || !snap.gpus || !snap.gpus.length) {
-      var r0 = q('nvgpu-health');
-      if (r0) { r0.textContent = 'no data'; r0.className = 'nvgpu-badge nvgpu-bad'; }
+      var r0 = q('nvgpu-mode');
+      if (r0) { r0.textContent = t('mode_dead'); r0.className = 'nvgpu-mode nvgpu-push-off'; }
       return;
     }
     state.last = snap;
@@ -101,51 +179,36 @@
     var nameEl = q('nvgpu-name');
     if (nameEl) nameEl.textContent = g.name || 'GPU';
 
-    var pst = q('nvgpu-pstate');
-    if (pst) pst.textContent = g.pstate || '–';
-
-    /* 健康状态 */
-    var flags = g.flags || [];
-    var bad = flags.filter(function (f) { return f[0] === 'error'; });
-    var warn = flags.filter(function (f) { return f[0] === 'warn'; });
-    var fmtFlag = function (f) {
-      var key = 'flag_' + String(f[1] || '').replace(/^throttle_/, 'thr_');
-      var tpl = t(key, '');
-      if (!tpl) return String(f[1] || '');
-      var args = f[2] || [];
-      var i = 0;
-      return tpl.replace(/%s/g, function () { return args[i++]; });
-    };
-    var h = q('nvgpu-health');
-    if (h) {
-      if (bad.length) { h.textContent = t('error'); h.className = 'nvgpu-badge nvgpu-bad'; }
-      else if (warn.length) { h.textContent = t('warn'); h.className = 'nvgpu-badge nvgpu-warn'; }
-      else { h.textContent = t('ok'); h.className = 'nvgpu-badge nvgpu-ok'; }
-      h.title = flags.length ? flags.map(fmtFlag).join('\n') : t('ok');
+    var sub = q('nvgpu-sub');
+    if (sub) {
+      var parts = [];
+      if (g.driver) parts.push(g.driver);
+      if (g.pstate) parts.push(g.pstate);
+      if (g.vbios) parts.push('VBIOS ' + g.vbios);
+      sub.textContent = parts.join(' · ');
     }
 
-    /* 大指标 */
-    var gu = q('nvgpu-gpu');
-    if (gu) gu.textContent = pct(g.gpu_pct);
+    /* GPU 负载 */
+    var gu = (g.gpu_pct === null || g.gpu_pct === undefined) ? null : g.gpu_pct;
+    setBar('nvgpu-gpu', 'nvgpu-fill-gpu',
+      gu === null ? '–' : num(gu) + '%',
+      gu, gu !== null && gu >= 90, false);
 
-    var tp = q('nvgpu-temp');
-    if (tp) {
-      tp.textContent = (g.temp === null || g.temp === undefined) ? '–' : num(g.temp) + '°C';
-      var tw = (snap.cfg && snap.cfg.temp_warn) || 85;
-      tp.className = 'nvgpu-v' + (g.temp >= tw ? ' nvgpu-bad-t' : (g.temp >= tw - 10 ? ' nvgpu-warn-t' : ''));
-    }
+    /* 温度 */
+    var tw = (snap.cfg && snap.cfg.temp_warn) || 85;
+    var tp = g.temp;
+    var tpct = tp === null || tp === undefined ? null : Math.max(0, Math.min(100, (tp / (tw + 15)) * 100));
+    setBar('nvgpu-temp', 'nvgpu-fill-temp',
+      tp === null || tp === undefined ? '–' : num(tp) + '°C',
+      tpct, tp !== null && tp >= tw - 10, tp !== null && tp >= tw);
 
-    var mem = q('nvgpu-mem');
+    /* 显存 */
     var memPct = (g.mem_total && g.mem_used !== null) ? (g.mem_used / g.mem_total * 100) : null;
-    if (mem) {
-      mem.textContent = (memPct === null) ? '–'
-        : (g.mem_used >= 1024 ? num(g.mem_used / 1024, 1) + ' / ' + num(g.mem_total / 1024, 0) + ' GB' : num(g.mem_used) + ' / ' + num(g.mem_total) + ' MB');
-    }
-    var bar = q('nvgpu-membar');
-    if (bar) {
-      bar.style.width = (memPct === null ? 0 : Math.max(0, Math.min(100, memPct))) + '%';
-      bar.className = memPct >= 97 ? 'nvgpu-fill-bad' : (memPct >= 85 ? 'nvgpu-fill-warn' : '');
-    }
+    var memText = memPct === null ? '–'
+      : (g.mem_used >= 1024
+          ? num(g.mem_used / 1024, 1) + '/' + num(g.mem_total / 1024, 0) + 'G'
+          : num(g.mem_used) + '/' + num(g.mem_total) + 'M');
+    setBar('nvgpu-mem', 'nvgpu-fill-mem', memText, memPct, memPct !== null && memPct >= 85, memPct !== null && memPct >= 97);
 
     /* 明细行 */
     var set = function (id, txt) { var e = q(id); if (e) e.textContent = txt; };
@@ -167,7 +230,8 @@
       + ' x' + (g.pcie_width_max === null ? '–' : num(g.pcie_width_max)) + '）'
       + (g.replay !== null && g.replay !== undefined ? ' · replay ' + num(g.replay) : ''));
     set('nvgpu-codec',
-      'ENC ' + pct(g.enc_pct) + ' / DEC ' + pct(g.dec_pct)
+      'ENC ' + (g.enc_pct === null ? '–' : num(g.enc_pct) + '%')
+      + ' / DEC ' + (g.dec_pct === null ? '–' : num(g.dec_pct) + '%')
       + (g.enc_sessions !== null && g.enc_sessions !== undefined ? ' · ' + t('sessions') + ' ' + num(g.enc_sessions) : ''));
 
     /* ECC */
@@ -175,8 +239,10 @@
     if (eccEl) {
       if (!g.ecc_enabled) {
         eccEl.innerHTML = '<span class="nvgpu-dim">' + esc(t('ecc_off')) + '</span>'
-          + ' · ' + esc(t('corrected')) + ' <span class="nvgpu-dim">–</span>'
-          + ' · ' + esc(t('uncorrected')) + ' <span class="nvgpu-dim">–</span>';
+          + ' · ' + esc(t('remapped')) + ' '
+          + (g.remap_uncorrectable === null || g.remap_uncorrectable === undefined
+              ? '–'
+              : num(g.remap_correctable) + '/' + num(g.remap_uncorrectable));
       } else {
         var cu = g.ecc_uncorr_vol, cc = g.ecc_corr_vol;
         eccEl.innerHTML = esc(g.ecc_mode || 'On')
@@ -186,22 +252,17 @@
       }
     }
 
-    /* 进程 */
-    var procsEl = q('nvgpu-procs');
-    var showProc = !snap.cfg || snap.cfg.show_proc !== false;
-    if (procsEl) {
-      if (!showProc) { procsEl.textContent = '（' + t('proc_off') + '）'; }
-      else if (!g.processes || !g.processes.length) { procsEl.innerHTML = '<span class="nvgpu-dim">' + esc(t('no_proc')) + '</span>'; }
-      else {
-        procsEl.innerHTML = g.processes.slice(0, 4).map(function (p) {
-          var m = (p.mem === null || p.mem === undefined) ? '' : ' <span class="nvgpu-dim">' + num(p.mem) + 'M</span>';
-          return '<span class="nvgpu-chip" title="PID ' + esc(p.pid) + ' · ' + esc(p.path || '') + '">'
-            + esc(p.name || ('pid ' + p.pid)) + m + '</span>';
-        }).join('') + (g.processes.length > 4 ? '<span class="nvgpu-dim"> +' + (g.processes.length - 4) + '</span>' : '');
-      }
-    }
+    renderProcesses(g);
 
-    /* 告警条 */
+    /* 告警 */
+    var flags = g.flags || [];
+    var fmtFlag = function (f) {
+      var key = 'flag_' + String(f[1] || '').replace(/^throttle_/, 'thr_');
+      var tpl = t(key, '');
+      if (!tpl) return String(f[1] || '');
+      var args = f[2] || [], i = 0;
+      return tpl.replace(/%s/g, function () { return args[i++]; });
+    };
     var fl = q('nvgpu-flags');
     if (fl) {
       if (!flags.length) { fl.innerHTML = ''; fl.style.display = 'none'; }
@@ -222,16 +283,7 @@
       modeEl.className = 'nvgpu-mode ' + (state.mode === 'push' ? 'nvgpu-push-on' : 'nvgpu-push-off');
     }
 
-    /* 折线用最新窗口数据 */
-    drawSeries();
-  }
-
-  function drawSeries() {
-    var hg = state.hist.gpu, hm = state.hist.mem, ht = state.hist.temp;
-    drawSpark(q('nvgpu-spark-gpu'), hg, { min: 0, max: 100, color: '#5aa9e6' });
-    drawSpark(q('nvgpu-spark-mem'), hm, { min: 0, max: 100, color: '#8f7ee6' });
-    var tw = (state.last && state.last.cfg && state.last.cfg.temp_warn) || 85;
-    drawSpark(q('nvgpu-spark-temp'), ht, { min: Math.max(20, (tw - 50)), max: tw + 5, color: '#e6805a' });
+    drawChart();
   }
 
   /* ---------------------------------------------------------- 数据获取 */
@@ -265,7 +317,7 @@
   function schedulePoll() {
     clearTimeout(state.pollTimer);
     state.pollTimer = setTimeout(function () {
-      fetchOnce(true);
+      if (!document.hidden) fetchOnce(true);
       schedulePoll();
     }, state.refreshMs);
   }
@@ -282,19 +334,18 @@
           var d = JSON.parse(msg);
           if (d && d.type === 'sample') {
             state.mode = 'push';
-            // 推送帧不含慢层/历史，把它并入上一帧保留的慢层数据
             var merged = { ts: d.ts, gpus: d.gpus, cfg: (state.last && state.last.cfg) || state.boot.cfg, ok: true };
             if (state.last && state.last.gpus && state.last.gpus[0]) {
               var prev = state.last.gpus[0], cur = merged.gpus[0];
               ['processes', 'ecc_enabled', 'ecc_mode', 'ecc_corr_vol', 'ecc_uncorr_vol',
                'ecc_corr_agg', 'ecc_uncorr_agg', 'remap_correctable', 'remap_uncorrectable',
-               'remap_pending', 'remap_failure', 'replay', 'enc_sessions', 'throttle'].forEach(function (k) {
+               'remap_pending', 'remap_failure', 'replay', 'enc_sessions', 'throttle',
+               'driver', 'vbios'].forEach(function (k) {
                 if (cur[k] === undefined && prev[k] !== undefined) cur[k] = prev[k];
               });
               if (!cur.flags) cur.flags = prev.flags;
             }
             render(merged);
-            // 每 5 秒补一次历史刷新（推送不含历史）
             if (Date.now() - state.lastFetch > 5000) fetchOnce(true);
           }
         } catch (e) { /* 非法帧忽略 */ }
@@ -315,7 +366,7 @@
 
   /* ---------------------------------------------------------- 控件 */
 
-  function bindControls(root) {
+  function bindControls() {
     var selR = q('nvgpu-refresh');
     var selW = q('nvgpu-window');
     var pause = q('nvgpu-pause');
@@ -344,13 +395,12 @@
     if (pause) {
       pause.addEventListener('click', function () {
         state.paused = !state.paused;
-        pause.className = 'fa hand ' + (state.paused ? 'fa-play' : 'fa-pause');
+        pause.className = 'fa fa-fw control hand ' + (state.paused ? 'fa-play' : 'fa-pause');
         pause.title = state.paused ? t('resume') : t('pause');
         if (!state.paused) fetchOnce(true);
       });
     }
 
-    /* 标签页隐藏时停轮询，回来立即补 */
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) {
         clearTimeout(state.pollTimer);
@@ -360,21 +410,26 @@
       }
     });
 
-    /* 窗口尺寸变化重画折线 */
     var rt = null;
     window.addEventListener('resize', function () {
       clearTimeout(rt);
-      rt = setTimeout(drawSeries, 150);
+      rt = setTimeout(drawChart, 150);
     });
   }
 
-  function boot(root) {
-    if (!root) root = q('nvgpu-root');
-    if (!root || root.dataset.nvgpuReady === '1') return;
-    root.dataset.nvgpuReady = '1';
-
+  function boot(anchor) {
+    var root = state.root || q('nvgpu-name') || anchor;
+    if (!root || state.boot) return;
+    var tile = root.closest ? root.closest('tbody') : null;
+    if (!tile) return;
+    var bootEl = tile.querySelector('[data-boot]');
+    // data-boot 挂在 tbody 上（模板里放在 body 上更稳），这里兼容两种
     var conf = {};
-    try { conf = JSON.parse(root.getAttribute('data-boot') || '{}'); } catch (e) {}
+    try {
+      conf = JSON.parse((bootEl && bootEl.getAttribute('data-boot')) || tile.getAttribute('data-boot') || '{}');
+    } catch (e) {}
+
+    state.root = tile;
     state.L = conf.lang || {};
     state.boot = {
       api: conf.api || '/plugins/nvidia-gpu-status/api.php',
@@ -384,16 +439,15 @@
     if (conf.refreshMs) state.refreshMs = conf.refreshMs;
     if (conf.windowMin) state.windowMin = conf.windowMin;
 
-    bindControls(root);
-    fetchOnce(true);          // 首帧立刻出数（不等推送）
+    bindControls();
+    fetchOnce(true);
 
     if (conf.push !== false) {
-      var ok = startPush();
-      if (!ok) state.mode = 'poll';
+      if (!startPush()) state.mode = 'poll';
     } else {
       state.mode = 'poll';
     }
-    schedulePoll();           // 轮询始终在跑：兜底 + 拉历史
+    schedulePoll();
   }
 
   window.NVGPU = { boot: boot, state: state };

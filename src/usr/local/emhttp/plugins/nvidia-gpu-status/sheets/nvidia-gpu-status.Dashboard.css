@@ -1,180 +1,235 @@
 /* nvidia-gpu-status :: tile 样式
- * 只使用 CSS 变量（Unraid 7 主题），不写死背景色，避免亮/暗主题失效。
+ *
+ * 目标：与 dynamix 自带的 Processor / Interface tile 视觉一致。
+ *   - 不覆盖字号，继承 table.dashboard 的 1.2rem / 行高 2.4rem
+ *   - 条形图直接复用 .usage-disk 的高度与配色变量
+ *   - 标题用 .tile-header / .section / .tile-header-main 原生类
  */
 
-.nvgpu-tile {
-  font-size: 1.15rem;
-  line-height: 1.5;
-  min-width: 320px;
-}
+/* ---------------------------------------------------------- 标题区 */
 
-.nvgpu-tile.nvgpu-missing {
-  color: var(--orange-500, #e6a23c);
-  padding: 4px 0;
-}
-
-/* ---------------------------------------------------------- 头部 */
-
-.nvgpu-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 4px;
-}
-
-.nvgpu-name {
-  font-weight: 700;
+.nvgpu-sub {
+  font-size: 1.2rem;
+  opacity: .72;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 16rem;
+  display: block;
+  max-width: 26rem;
 }
-
-.nvgpu-badge {
-  font-size: 0.85rem;
-  padding: 0 5px;
-  border-radius: 3px;
-  border: 1px solid currentColor;
-  opacity: 0.9;
-  white-space: nowrap;
-}
-
-.nvgpu-badge.nvgpu-ok   { color: var(--green-500, #4caf50); }
-.nvgpu-badge.nvgpu-warn { color: var(--orange-500, #e6a23c); }
-.nvgpu-badge.nvgpu-bad  { color: var(--red-500, #f44336); }
 
 .nvgpu-ctl {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
 .nvgpu-sel {
-  font-size: 0.85rem;
-  padding: 1px 2px;
+  font-size: 1.1rem;
+  padding: 0 1px;
+  height: 1.9rem;
+  width: auto;
+  min-width: 4.4rem;
+  max-width: 7rem;
   background: transparent;
   color: inherit;
   border: 1px solid var(--border-color, rgba(128,128,128,.45));
   border-radius: 3px;
   cursor: pointer;
+  font-family: inherit;
+  display: inline-block;
 }
 
 .nvgpu-sel option { color: #222; background: #fff; }
 
-.nvgpu-ctl .fa { cursor: pointer; opacity: 0.75; }
-.nvgpu-ctl .fa:hover { opacity: 1; }
+/* ---------------------------------------------------------- 三条指标行 + 明细行
+ *
+ * 用 flex 而不是 .w26：.w26 是 inline-block 定宽 26%，与后面的条形图相加会溢出换行。
+ * 行高沿用 table.dashboard 的 2.4rem，字号继承，不自己写 font-size。
+ */
 
-/* ---------------------------------------------------------- 大指标三列 */
-
-.nvgpu-grid {
+.nvgpu-kv {
   display: flex;
+  align-items: center;
   gap: 10px;
-  margin: 2px 0 6px;
-}
-
-.nvgpu-metric {
-  flex: 1 1 0;
-  min-width: 0;
-  vertical-align: top;
+  width: 100%;
 }
 
 .nvgpu-k {
-  display: block;
-  font-size: 0.82rem;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  opacity: .6;
-}
-
-.nvgpu-v {
-  display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  flex: 0 0 22%;
+  max-width: 22%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.nvgpu-v.nvgpu-warn-t { color: var(--orange-500, #e6a23c); }
-.nvgpu-v.nvgpu-bad-t  { color: var(--red-500, #f44336); }
-
-.nvgpu-spark {
-  display: block;
-  width: 100%;
-  height: 34px;
-  margin-top: 2px;
+.nvgpu-pct {
+  flex: 0 0 auto;
+  min-width: 6.4em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.nvgpu-bar {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(128,128,128,.22);
-  overflow: hidden;
-  margin-top: 3px;
+/* 复用 .usage-disk 的高度/配色变量，只补 flex 占位 */
+.nvgpu-kv .usage-disk {
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 1.8rem;
+  margin: 0;
+  position: relative;
+  background-color: var(--usage-disk-background-color);
 }
 
-.nvgpu-bar > i {
-  display: block;
+.nvgpu-kv .usage-disk > .nvgpu-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
   height: 100%;
   width: 0;
-  background: var(--blue-500, #5aa9e6);
-  transition: width .35s ease;
+  margin: 0;
+  background-color: var(--blue-500, #5aa9e6);
+  transition: width .4s ease, background-color .3s ease;
 }
 
-.nvgpu-bar > i.nvgpu-fill-warn { background: var(--orange-500, #e6a23c); }
-.nvgpu-bar > i.nvgpu-fill-bad  { background: var(--red-500, #f44336); }
+.nvgpu-fill.is-warn { background-color: var(--orange-500, #e6a23c) !important; }
+.nvgpu-fill.is-bad  { background-color: var(--red-500, #f44336) !important; }
+
+.nvgpu-pct.is-warn { color: var(--orange-500, #e6a23c); }
+.nvgpu-pct.is-bad  { color: var(--red-500, #f44336); }
+
+/* ---------------------------------------------------------- 折线图 */
+
+.nvgpu-chart {
+  display: block;
+  width: 100%;
+  height: 96px;
+}
+
+/* 折线图不需要表格单元格的上下 padding，否则会出现两条空白 */
+#nvgpu-tile > tr.nvgpu-chart-row > td {
+  padding-top: 2px;
+  padding-bottom: 0;
+}
+
+.nvgpu-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 1.05rem;
+  opacity: .68;
+  padding-bottom: 2px;
+}
+
+.nvgpu-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: 0;
+}
 
 /* ---------------------------------------------------------- 明细行 */
 
-.nvgpu-rows { display: block; }
-
-.nvgpu-row {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  padding: 1px 0;
-  border-top: 1px solid rgba(128,128,128,.12);
-  font-size: 0.95rem;
-}
-
-.nvgpu-row > b {
-  flex: 0 0 8.5rem;
-  font-weight: 600;
-  opacity: .72;
-  white-space: nowrap;
+.nvgpu-val {
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.nvgpu-row > span {
-  flex: 1 1 auto;
-  font-variant-numeric: tabular-nums;
-  word-break: break-word;
+  white-space: nowrap;
 }
 
 .nvgpu-dim { opacity: .5; }
 .nvgpu-warn-t { color: var(--orange-500, #e6a23c); }
 .nvgpu-bad-t  { color: var(--red-500, #f44336); }
 
-.nvgpu-chip {
-  display: inline-block;
-  padding: 0 5px;
-  margin: 1px 3px 1px 0;
-  border-radius: 3px;
-  background: rgba(128,128,128,.14);
-  font-size: 0.86rem;
+/* ---------------------------------------------------------- 进程表 */
+
+/* 小标题行（“占用进程”），跟官方 tile 的二级标题观感一致 */
+.nvgpu-proc-head > td {
+  padding-top: 10px;
+  font-weight: bold;
+}
+
+.nvgpu-proc-colhead > td {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-size: 1.1rem;
+  opacity: .62;
+}
+
+.nvgpu-pc { display: inline-block; }
+
+.nvgpu-pc-idx   { width: 2.4rem; }
+.nvgpu-pc-owner { width: 34%; }
+.nvgpu-pc-mem   { width: 14%; text-align: right; padding-right: 12px; }
+.nvgpu-pc-cmd   { width: auto; }
+
+.nvgpu-proclist {
+  font-size: 1.15rem;
+  line-height: 1.9rem;
+}
+
+.nvgpu-proc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
   white-space: nowrap;
 }
 
+.nvgpu-proc-row + .nvgpu-proc-row {
+  border-top: 1px solid var(--table-border-color, rgba(128,128,128,.16));
+}
+
+.nvgpu-proc-row > .nvgpu-pc-idx {
+  flex: 0 0 2.4rem;
+  opacity: .55;
+  font-variant-numeric: tabular-nums;
+}
+
+.nvgpu-proc-row > .nvgpu-pc-owner {
+  flex: 0 0 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nvgpu-proc-row > .nvgpu-pc-mem {
+  flex: 0 0 14%;
+  text-align: right;
+  padding-right: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nvgpu-proc-row > .nvgpu-pc-cmd {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .85;
+}
+
+/* 归属标签的视觉区分：容器蓝、VM 紫、宿主机灰 */
+.nvgpu-own-tag {
+  display: inline-block;
+  font-size: 1rem;
+  padding: 0 4px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: 1px;
+  background: rgba(128,128,128,.16);
+}
+
+.nvgpu-own-container { color: var(--blue-500, #5aa9e6); }
+.nvgpu-own-vm        { color: var(--purple-500, #8f7ee6); }
+.nvgpu-own-host      { color: inherit; opacity: .6; }
+
 /* ---------------------------------------------------------- 告警 */
 
-.nvgpu-flags { margin-top: 5px; }
+.nvgpu-flags { margin: 4px 0 0; }
 
 .nvgpu-flag {
-  font-size: 0.9rem;
+  font-size: 1.15rem;
   padding: 2px 6px;
   margin: 2px 0;
   border-radius: 3px;
@@ -192,7 +247,7 @@
   align-items: center;
   gap: 8px;
   margin-top: 4px;
-  font-size: 0.82rem;
+  font-size: 1.1rem;
   opacity: .62;
 }
 
@@ -200,8 +255,16 @@
 .nvgpu-push-on  { color: var(--green-500, #4caf50); opacity: 1; }
 .nvgpu-push-off { color: var(--orange-500, #e6a23c); opacity: 1; }
 
-/* 窄屏（平板/手机）收紧 */
+.nvgpu-missing {
+  color: var(--orange-500, #e6a23c);
+  padding: 4px 0;
+}
+
+/* ---------------------------------------------------------- 窄屏 */
+
 @media (max-width: 900px) {
-  .nvgpu-row > b { flex-basis: 6.5rem; }
-  .nvgpu-v { font-size: 1.25rem; }
+  .nvgpu-proc-row > .nvgpu-pc-owner { flex-basis: 40%; }
+  .nvgpu-proc-row > .nvgpu-pc-mem   { flex-basis: 18%; }
+  .nvgpu-pc-owner { width: 40%; }
+  .nvgpu-pc-mem   { width: 18%; }
 }
