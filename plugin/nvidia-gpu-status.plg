@@ -2,8 +2,8 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "nvidia-gpu-status">
 <!ENTITY author    "xztjhs">
-<!ENTITY version   "2026.11.16b">
-<!ENTITY pkgver    "nvidia-gpu-status-2026.11.16b-x86_64-1">
+<!ENTITY version   "1.0">
+<!ENTITY pkgver    "nvidia-gpu-status-1.0-x86_64-1">
 <!ENTITY launch    "Settings/nvidia-gpu-status">
 <!ENTITY raw       "https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main">
 <!ENTITY plgPATH   "/boot/config/plugins/&name;">
@@ -13,12 +13,18 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&raw;/plugin/&name;.plg" launch="&launch;" icon="microchip" min="7.0.0" support="https://github.com/xztjhs/@REPO@/issues">
 
 <CHANGES>
-### 2026.11.16b
-- 首个版本：Unraid Dashboard 实时 GPU 磁贴
-- 指标：利用率（GPU/显存/编码/解码）、温度、风扇、功耗、显存、频率、PCIe 速率与宽度、ECC 计数、行重映射、PCIe replay、编码会话、进程显存占用
-- 刷新间隔 0.5–10 秒可调，历史窗口 1–60 分钟可调（磁贴右上角即时切换，设置页改默认值）
+### 1.0
+首个正式版。
+
+- 仪表板磁贴：利用率（GPU/显存/编码/解码）、温度、风扇、功耗、显存、频率、
+  PCIe 速率与宽度、ECC 计数、行重映射、PCIe replay、编码会话
+- GPU 负载 / 温度 / 显存各占一行，用原生进度条样式；字号与行高对齐内置处理器/内存磁贴
+- 占用进程表：序号、所属容器/虚拟机、显存、命令行（容器读 cgroup，虚拟机读 qemu guest 名）
+- 刷新间隔 0.5–10 秒、显示时长 1–60 分钟，磁贴上即时切换，设置页改默认值
+- 历史折线图（GPU/显存/温度）带图例与动态温度量程
 - 双通道：nchan 实时推送（&lt;1s），不可用时自动降级为 HTTP 轮询
-- 采样器为常驻进程，快层 0.5s 流式（约 1% CPU），慢层 10s 一次
+- 采样器为常驻进程：快层 0.5s 流式（约 1% CPU），慢层 10s 一次
+- 中英文界面（按 Unraid 语言设置自动切换）
 </CHANGES>
 
 <!-- 1. 停掉旧实例，避免升级时留下孤儿 nvidia-smi -->
@@ -48,8 +54,8 @@ exit 0
 <!-- 2. 下载并安装软件包 -->
 <FILE Name="&plgPATH;/&pkgver;.txz" Run="upgradepkg --install-new">
 <URL>&raw;/archive/&pkgver;.txz</URL>
-<MD5>850c4fb4f2ae7df78bcd41fbc2b57158</MD5>
-<SHA256>0300d7ac28b99463314fe7adeb8b37d9f1d03e1a393b8e10846019778342a1f7</SHA256>
+<MD5>9277cfab918a38c50b8ab97e1378adf4</MD5>
+<SHA256>0fbbc9d77edc024d47fda5b80fe0299d0ae173517d83e894435c604553c27ae6</SHA256>
 </FILE>
 
 <!-- 3. 配置与服务 -->
