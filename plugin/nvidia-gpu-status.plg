@@ -1,0 +1,101 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "nvidia-gpu-status">
+<!ENTITY author    "xztjhs">
+<!ENTITY version   "2026.11.16">
+<!ENTITY pkgver    "nvidia-gpu-status-2026.11.16-x86_64-1">
+<!ENTITY launch    "Settings/nvidia-gpu-status">
+<!ENTITY raw       "https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main">
+<!ENTITY plgPATH   "/boot/config/plugins/&name;">
+<!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&raw;/plugin/&name;.plg" launch="&launch;" icon="microchip" min="7.0.0" support="https://github.com/xztjhs/@REPO@/issues">
+
+<CHANGES>
+### 2026.11.16
+- 首个版本：Unraid Dashboard 实时 GPU 磁贴
+- 指标：利用率（GPU/显存/编码/解码）、温度、风扇、功耗、显存、频率、PCIe 速率与宽度、ECC 计数、行重映射、PCIe replay、编码会话、进程显存占用
+- 刷新间隔 0.5–10 秒可调，历史窗口 1–60 分钟可调（磁贴右上角即时切换，设置页改默认值）
+- 双通道：nchan 实时推送（&lt;1s），不可用时自动降级为 HTTP 轮询
+- 采样器为常驻进程，快层 0.5s 流式（约 1% CPU），慢层 10s 一次
+</CHANGES>
+
+<!-- 1. 停掉旧实例，避免升级时留下孤儿 nvidia-smi -->
+<FILE Run="/bin/bash">
+<INLINE>
+if [ -x /etc/rc.d/rc.&name; ]; then
+  bash /etc/rc.d/rc.&name; stop
+fi
+# 清理可能的孤儿流式进程（按精确模式，避免误伤）
+for p in $(pgrep -f 'nvidia-smi --query-gpu=.*-lms' 2>/dev/null); do
+  kill "$p" 2>/dev/null
+done
+exit 0
+</INLINE>
+</FILE>
+
+<!-- 2. 下载并安装软件包 -->
+<FILE Name="&plgPATH;/&pkgver;.txz" Run="upgradepkg --install-new">
+<URL>&raw;/archive/&pkgver;.txz</URL>
+<MD5>6de132c1e0ce48d27797dd84649ed334</MD5>
+<SHA256>191bd191779ce827d0c43d9f0301b4bf5d09744af57648844582b34197898c54</SHA256>
+</FILE>
+
+<!-- 3. 配置与服务 -->
+<FILE Run="/bin/bash">
+<INLINE>
+set -u
+CONFIG="&plgPATH;"
+mkdir -p "$CONFIG"
+
+# 升级时保留用户配置；首次安装写入默认值
+if [ ! -f "$CONFIG/&name;.cfg" ]; then
+  if [ -f "&emhttp;/default.cfg" ]; then
+    cp "&emhttp;/default.cfg" "$CONFIG/&name;.cfg"
+    echo "created default config: $CONFIG/&name;.cfg"
+  fi
+else
+  echo "keeping existing config: $CONFIG/&name;.cfg"
+fi
+echo "&version;" > "$CONFIG/version"
+
+# rc 脚本权限（/etc 是内存盘，tar 里的权限会保留，但再兜一次）
+[ -f "/etc/rc.d/rc.&name;" ] &amp;&amp; chmod 755 "/etc/rc.d/rc.&name;"
+
+# 清掉旧版本残留的 shm
+rm -rf /dev/shm/&name;
+
+# 起服务
+bash /etc/rc.d/rc.&name; start
+
+echo ""
+echo "-------------------------------------------------------------"
+echo " nvidia-gpu-status installed."
+echo " Dashboard 上默认显示磁贴；若未看到，点右上角扳手图标 →"
+echo " Tile Management → 勾选 \"NVIDIA GPU Status\" → Apply。"
+echo " 设置页：Settings → NVIDIA GPU Status"
+echo "-------------------------------------------------------------"
+exit 0
+</INLINE>
+</FILE>
+
+<!-- 4. 卸载 -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+if [ -x /etc/rc.d/rc.&name; ]; then
+  bash /etc/rc.d/rc.&name; stop
+fi
+for p in $(pgrep -f 'nvidia-smi --query-gpu=.*-lms' 2>/dev/null); do
+  kill "$p" 2>/dev/null
+done
+removepkg &name; 2>/dev/null
+rm -f /etc/rc.d/rc.&name;
+rm -rf /dev/shm/&name;
+rm -rf "&emhttp;"
+rm -rf "&plgPATH;"
+exit 0
+</INLINE>
+</FILE>
+
+</PLUGIN>

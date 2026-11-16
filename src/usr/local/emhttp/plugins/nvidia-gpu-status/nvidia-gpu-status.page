@@ -1,0 +1,167 @@
+Menu="Utilities"
+Title="NVIDIA GPU Status"
+Icon="nvidia-gpu-status.png"
+Tag="microchip"
+---
+<?PHP
+/* nvidia-gpu-status :: 设置页
+ * 走 Unraid 标准 /update.php：#file 写 /boot/config/plugins/nvidia-gpu-status/nvidia-gpu-status.cfg
+ * #command 在保存后重启采样器，使 SAMPLE_MS / SLOW_SEC / PUSH 立即生效。
+ */
+$plugin = 'nvidia-gpu-status';
+
+if (!function_exists('parse_plugin_cfg')) {
+  require_once '/usr/local/emhttp/plugins/dynamix/include/Wrappers.php';
+}
+$cfg = function_exists('parse_plugin_cfg') ? parse_plugin_cfg($plugin) : [];
+
+$g = function ($k, $d = '') use ($cfg) {
+  return htmlspecialchars((string)($cfg[$k] ?? $d), ENT_QUOTES);
+};
+
+$csrf = $var['csrf_token'] ?? '';
+$hasSmi = is_executable('/usr/bin/nvidia-smi');
+
+$sel = function (array $pairs, $cur) {
+  $s = '';
+  foreach ($pairs as $v => $label) {
+    $s .= '<option value="' . htmlspecialchars((string)$v, ENT_QUOTES) . '"'
+        . ((string)$v === (string)$cur ? ' selected' : '') . '>'
+        . htmlspecialchars($label, ENT_QUOTES) . '</option>';
+  }
+  return $s;
+};
+
+$sampleOpts = $sel(['200' => '0.2s', '500' => '0.5s', '1000' => '1s', '2000' => '2s'], $cfg['SAMPLE_MS'] ?? 500);
+$refreshOpts = $sel(['500' => '0.5s', '1000' => '1s', '2000' => '2s', '3000' => '3s', '5000' => '5s', '10000' => '10s'], $cfg['REFRESH_MS'] ?? 2000);
+$windowOpts = $sel(['1' => '1 分钟', '2' => '2 分钟', '5' => '5 分钟', '10' => '10 分钟', '15' => '15 分钟', '30' => '30 分钟', '60' => '60 分钟'], $cfg['WINDOW_MIN'] ?? 5);
+$slowOpts = $sel(['5' => '5s', '10' => '10s', '30' => '30s', '60' => '60s'], $cfg['SLOW_SEC'] ?? 10);
+$colOpts = $sel(['column1' => '第一列（CPU/内存旁）', 'column2' => '第二列（Shares 旁）', 'column3' => '第三列（Parity 旁）'], $cfg['COLUMN'] ?? 'column3');
+
+$enabled = strtolower((string)($cfg['ENABLED'] ?? 'yes')) !== 'no';
+$push = strtolower((string)($cfg['PUSH'] ?? 'yes')) !== 'no';
+$showProc = strtolower((string)($cfg['SHOW_PROCESSES'] ?? 'yes')) !== 'no';
+
+/* 运行状态 */
+$pidFile = '/var/run/nvidia-gpu-status.pid';
+$pid = is_file($pidFile) ? (int)@file_get_contents($pidFile) : 0;
+$running = $pid > 0 && @posix_kill($pid, 0);
+$latest = '/dev/shm/nvidia-gpu-status/latest.json';
+$latestAge = is_file($latest) ? max(0, time() - (int)@filemtime($latest)) : null;
+?>
+<form markdown="0" method="POST" action="/update.php" target="progressFrame" id="nvgpu-form">
+  <input type="hidden" name="#file" value="nvidia-gpu-status/nvidia-gpu-status.cfg">
+  <input type="hidden" name="#command" value="/etc/rc.d/rc.nvidia-gpu-status restart">
+  <input type="hidden" name="csrf_token" value="<?=htmlspecialchars($csrf, ENT_QUOTES)?>">
+
+  <dl>
+    <dt>状态</dt>
+    <dd>
+      <? if (!$hasSmi): ?>
+        <span class="red-text"><b>未检测到 nvidia-smi</b></span> —— 请先安装 <b>nvidia-driver</b> 插件
+      <? elseif ($running): ?>
+        <span class="green-text"><b>采样器运行中</b></span>（pid <?=$pid?>）
+        <? if ($latestAge !== null): ?> · 最新数据 <?=$latestAge?> 秒前<? endif; ?>
+      <? else: ?>
+        <span class="orange-text"><b>采样器未运行</b></span>
+        —— 点下方 Apply 重启服务，或执行 <code>/etc/rc.d/rc.nvidia-gpu-status start</code>
+      <? endif; ?>
+    </dd>
+
+    <dt>启用磁贴</dt>
+    <dd>
+      <select name="ENABLED">
+        <option value="yes" <?=$enabled ? 'selected' : ''?>>是</option>
+        <option value="no"  <?=!$enabled ? 'selected' : ''?>>否</option>
+      </select>
+      <span class="nvgpu-hint">关闭后 Dashboard 不再显示 GPU 磁贴，采样器停跑。</span>
+    </dd>
+
+    <dt>采样间隔</dt>
+    <dd>
+      <select name="SAMPLE_MS"><?=$sampleOpts?></select>
+      <span class="nvgpu-hint">守护进程调 nvidia-smi 的频率。0.2s 约 3% CPU，0.5s 约 1%。改后采样器自动重启。</span>
+    </dd>
+
+    <dt>默认刷新间隔</dt>
+    <dd>
+      <select name="REFRESH_MS"><?=$refreshOpts?></select>
+      <span class="nvgpu-hint">浏览器端刷新频率（0.5–10s）。磁贴右上角可临时改，改动只存在本浏览器。</span>
+    </dd>
+
+    <dt>默认显示时长</dt>
+    <dd>
+      <select name="WINDOW_MIN"><?=$windowOpts?></select>
+      <span class="nvgpu-hint">折线图回看窗口（1–60 分钟）。同样可在磁贴上临时改。</span>
+    </dd>
+
+    <dt>慢层刷新</dt>
+    <dd>
+      <select name="SLOW_SEC"><?=$slowOpts?></select>
+      <span class="nvgpu-hint">ECC / PCIe replay / 进程列表等重查询的间隔。这些数据不需要秒级。</span>
+    </dd>
+
+    <dt>磁贴列</dt>
+    <dd>
+      <select name="COLUMN"><?=$colOpts?></select>
+      <span class="nvgpu-hint">改完需刷新 Dashboard。</span>
+    </dd>
+
+    <dt>温度告警阈值</dt>
+    <dd>
+      <input type="number" name="TEMP_WARN" value="<?=$g('TEMP_WARN', 85)?>" min="40" max="110" step="1" style="width:6em"> °C
+    </dd>
+
+    <dt>实时推送</dt>
+    <dd>
+      <select name="PUSH">
+        <option value="yes" <?=$push ? 'selected' : ''?>>启用（nchan，推荐）</option>
+        <option value="no"  <?=!$push ? 'selected' : ''?>>关闭（仅 HTTP 轮询）</option>
+      </select>
+      <span class="nvgpu-hint">推送不可用时前端自动降级为轮询，不会空白。</span>
+    </dd>
+
+    <dt>显示进程占用</dt>
+    <dd>
+      <select name="SHOW_PROCESSES">
+        <option value="yes" <?=$showProc ? 'selected' : ''?>>显示</option>
+        <option value="no"  <?=!$showProc ? 'selected' : ''?>>隐藏</option>
+      </select>
+      <span class="nvgpu-hint">按显存排序显示前 4 个占用进程。</span>
+    </dd>
+  </dl>
+
+  <input type="submit" name="#apply" value="应用">
+  <input type="button" value="恢复默认" onclick="if(confirm('恢复默认配置？')){window.location='/update.php?file=nvidia-gpu-status/nvidia-gpu-status.cfg&default=1';}">
+  <input type="button" value="立即重启采样器" onclick="restartSampler()">
+  <input type="button" value="环境自检" onclick="nvgpuSelftest()">
+</form>
+
+<pre id="nvgpu-out" style="margin-top:1em;max-height:24em;overflow:auto;display:none"></pre>
+
+<style>
+  .nvgpu-hint { opacity:.65; font-size:.92em; margin-left:.4em; }
+</style>
+
+<script>
+function nvgpuShow(text) {
+  var o = document.getElementById('nvgpu-out');
+  o.style.display = '';
+  o.textContent = text;
+}
+function restartSampler() {
+  nvgpuShow('重启中…');
+  $.post('/plugins/nvidia-gpu-status/api.php?action=refresh')
+    .always(function () {
+      // 兜底：即便 refresh 不触发重启，也让用户看到最新状态
+      setTimeout(function () { location.reload(); }, 1200);
+    });
+}
+function nvgpuSelftest() {
+  nvgpuShow('检测中…');
+  fetch('/plugins/nvidia-gpu-status/api.php?action=selftest', {credentials:'same-origin', cache:'no-store'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) { nvgpuShow(JSON.stringify(d, null, 2)); })
+    .catch(function (e) { nvgpuShow('自检失败: ' + e); });
+}
+</script>

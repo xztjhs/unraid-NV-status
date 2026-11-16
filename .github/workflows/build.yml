@@ -1,0 +1,28 @@
+name: build-plugin
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build txz + plg
+        run: |
+          chmod +x build.sh
+          ./build.sh "${GITHUB_REF_NAME:-2026.11.16}" || ./build.sh 2026.11.16
+
+      - name: Verify XML
+        run: python3 -c "import xml.dom.minidom as m; m.parse('plugin/nvidia-gpu-status.plg'); print('plg xml ok')"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: |
+            archive/*.txz
+            plugin/*.plg

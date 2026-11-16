@@ -1,0 +1,152 @@
+Menu="Dashboard:0"
+Icon="microchip"
+---
+<?php
+/* nvidia-gpu-status :: Dashboard 磁贴
+ *
+ * 只输出一个 <tbody> 到 $mytiles（由 DashStats.page 的 customTiles() 渲染），
+ * 以及一段加载 JS 的 <script>。文案由 include/i18n.php 提供，不依赖语言包。
+ *
+ * ⚠️ 磁贴内不得出现嵌套 <table>/<tbody>：
+ *    Unraid 的 addProperties() 会对 div.frame 下每个 tbody 执行 attr('title').md5()，
+ *    没有 title 的内层 tbody 会抛异常，导致整页 tile 初始化中断。全部用 div。
+ */
+$plugin = 'nvidia-gpu-status';
+
+if (!function_exists('parse_plugin_cfg')) {
+  require_once '/usr/local/emhttp/plugins/dynamix/include/Wrappers.php';
+}
+require_once "/usr/local/emhttp/plugins/$plugin/include/i18n.php";
+
+$nvcfg  = function_exists('parse_plugin_cfg') ? parse_plugin_cfg($plugin) : [];
+$column = $nvcfg['COLUMN'] ?? 'column3';
+if (!in_array($column, ['column1', 'column2', 'column3'], true)) $column = 'column3';
+
+$enabled = strtolower((string)($nvcfg['ENABLED'] ?? 'yes')) !== 'no';
+$hasSmi  = is_executable('/usr/bin/nvidia-smi');
+
+if (!$enabled) return;
+
+$refreshMs = (int)($nvcfg['REFRESH_MS'] ?? 2000);
+$windowMin = (int)($nvcfg['WINDOW_MIN'] ?? 5);
+$sampleMs  = (int)($nvcfg['SAMPLE_MS'] ?? 500);
+$push      = strtolower((string)($nvcfg['PUSH'] ?? 'yes')) !== 'no';
+
+$L = nvgpu_labels();
+$h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
+
+/* 未装 nvidia-driver：只放一条提示，不加载 JS */
+if (!$hasSmi) {
+  $mytiles[$plugin][$column] = '<tbody title="' . $h($L['title']) . ' Status">'
+    . '<tr><td>' . $h($L['title']) . '</td></tr>'
+    . '<tr><td><div class="nvgpu-tile nvgpu-missing">' . $h($L['missing']) . '</div></td></tr>'
+    . '</tbody>';
+  return;
+}
+
+$opt = function (array $pairs, $sel) {
+  $s = '';
+  foreach ($pairs as $v => $label) {
+    $s .= '<option value="' . htmlspecialchars((string)$v, ENT_QUOTES) . '"'
+        . ((string)$v === (string)$sel ? ' selected' : '') . '>'
+        . htmlspecialchars($label, ENT_QUOTES) . '</option>';
+  }
+  return $s;
+};
+
+$refreshOpts = $opt([
+  '500' => '0.5s', '1000' => '1s', '2000' => '2s', '3000' => '3s', '5000' => '5s', '10000' => '10s',
+], $refreshMs);
+
+$windowOpts = $opt([
+  '1' => '1 min', '2' => '2 min', '5' => '5 min', '10' => '10 min', '15' => '15 min',
+  '30' => '30 min', '60' => '60 min',
+], $windowMin);
+
+$boot = $h(json_encode([
+  'api'       => "/plugins/$plugin/api.php",
+  'refreshMs' => $refreshMs,
+  'windowMin' => $windowMin,
+  'sampleMs'  => $sampleMs,
+  'push'      => $push,
+  'channel'   => 'nvgpu',
+  'lang'      => $L,
+], JSON_UNESCAPED_UNICODE));
+
+$tileTitle = $h($L['title']) . ' Status';
+
+$mytiles[$plugin][$column] = <<<EOT
+<tbody title="{$tileTitle}">
+<tr><td>{$h($L['title'])}</td></tr>
+<tr><td>
+<div class="nvgpu-tile" id="nvgpu-root" data-boot="{$boot}">
+  <div class="nvgpu-head">
+    <span class="nvgpu-name" id="nvgpu-name">GPU</span>
+    <span class="nvgpu-badge" id="nvgpu-pstate" title="{$h($L['pstate'])}">–</span>
+    <span class="nvgpu-badge" id="nvgpu-health" title="{$h($L['health'])}">–</span>
+    <span class="nvgpu-ctl">
+      <select id="nvgpu-refresh" class="nvgpu-sel" title="{$h($L['refresh'])}">{$refreshOpts}</select>
+      <select id="nvgpu-window" class="nvgpu-sel" title="{$h($L['window'])}">{$windowOpts}</select>
+      <i class="fa fa-pause hand" id="nvgpu-pause" title="{$h($L['pause'])}"></i>
+      <a href="/Settings/nvidia-gpu-status" title="{$h($L['settings'])}"><i class="fa fa-cog"></i></a>
+    </span>
+  </div>
+
+  <div class="nvgpu-grid">
+    <div class="nvgpu-metric">
+      <span class="nvgpu-k">{$h($L['gpu'])}</span>
+      <span class="nvgpu-v" id="nvgpu-gpu">–</span>
+      <canvas class="nvgpu-spark" id="nvgpu-spark-gpu" width="220" height="34"></canvas>
+    </div>
+    <div class="nvgpu-metric">
+      <span class="nvgpu-k">{$h($L['temp'])}</span>
+      <span class="nvgpu-v" id="nvgpu-temp">–</span>
+      <canvas class="nvgpu-spark" id="nvgpu-spark-temp" width="220" height="34"></canvas>
+    </div>
+    <div class="nvgpu-metric">
+      <span class="nvgpu-k">{$h($L['mem'])}</span>
+      <span class="nvgpu-v" id="nvgpu-mem">–</span>
+      <canvas class="nvgpu-spark" id="nvgpu-spark-mem" width="220" height="34"></canvas>
+      <div class="nvgpu-bar"><i id="nvgpu-membar"></i></div>
+    </div>
+  </div>
+
+  <div class="nvgpu-rows">
+    <div class="nvgpu-row"><b>{$h($L['fan'])}</b><span id="nvgpu-fan">–</span></div>
+    <div class="nvgpu-row"><b>{$h($L['power'])}</b><span id="nvgpu-power">–</span></div>
+    <div class="nvgpu-row"><b>{$h($L['clocks'])}</b><span id="nvgpu-clocks">–</span></div>
+    <div class="nvgpu-row"><b>{$h($L['pcie'])}</b><span id="nvgpu-pcie">–</span></div>
+    <div class="nvgpu-row"><b>{$h($L['codec'])}</b><span id="nvgpu-codec">–</span></div>
+    <div class="nvgpu-row"><b>{$h($L['ecc'])}</b><span id="nvgpu-ecc">–</span></div>
+    <div class="nvgpu-row nvgpu-procs"><b>{$h($L['processes'])}</b><span id="nvgpu-procs">–</span></div>
+  </div>
+
+  <div class="nvgpu-flags" id="nvgpu-flags" style="display:none"></div>
+  <div class="nvgpu-foot">
+    <span id="nvgpu-age">–</span>
+    <span id="nvgpu-mode" class="nvgpu-mode"></span>
+  </div>
+</div>
+</td></tr>
+</tbody>
+EOT;
+?>
+<script src="/plugins/<?=$plugin?>/javascript/gpu-status.js"></script>
+<script>
+(function () {
+  var tries = 0;
+  function go() {
+    if (window.NVGPU && typeof window.NVGPU.boot === 'function') {
+      window.NVGPU.boot(document.getElementById('nvgpu-root'));
+      return true;
+    }
+    return false;
+  }
+  $(function () {
+    if (go()) return;
+    var t = setInterval(function () {
+      if (go() || ++tries > 60) clearInterval(t);
+    }, 100);
+  });
+})();
+</script>

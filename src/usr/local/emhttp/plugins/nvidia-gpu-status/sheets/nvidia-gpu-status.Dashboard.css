@@ -1,0 +1,207 @@
+/* nvidia-gpu-status :: tile 样式
+ * 只使用 CSS 变量（Unraid 7 主题），不写死背景色，避免亮/暗主题失效。
+ */
+
+.nvgpu-tile {
+  font-size: 1.15rem;
+  line-height: 1.5;
+  min-width: 320px;
+}
+
+.nvgpu-tile.nvgpu-missing {
+  color: var(--orange-500, #e6a23c);
+  padding: 4px 0;
+}
+
+/* ---------------------------------------------------------- 头部 */
+
+.nvgpu-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.nvgpu-name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 16rem;
+}
+
+.nvgpu-badge {
+  font-size: 0.85rem;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.nvgpu-badge.nvgpu-ok   { color: var(--green-500, #4caf50); }
+.nvgpu-badge.nvgpu-warn { color: var(--orange-500, #e6a23c); }
+.nvgpu-badge.nvgpu-bad  { color: var(--red-500, #f44336); }
+
+.nvgpu-ctl {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nvgpu-sel {
+  font-size: 0.85rem;
+  padding: 1px 2px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border-color, rgba(128,128,128,.45));
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.nvgpu-sel option { color: #222; background: #fff; }
+
+.nvgpu-ctl .fa { cursor: pointer; opacity: 0.75; }
+.nvgpu-ctl .fa:hover { opacity: 1; }
+
+/* ---------------------------------------------------------- 大指标三列 */
+
+.nvgpu-grid {
+  display: flex;
+  gap: 10px;
+  margin: 2px 0 6px;
+}
+
+.nvgpu-metric {
+  flex: 1 1 0;
+  min-width: 0;
+  vertical-align: top;
+}
+
+.nvgpu-k {
+  display: block;
+  font-size: 0.82rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .6;
+}
+
+.nvgpu-v {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvgpu-v.nvgpu-warn-t { color: var(--orange-500, #e6a23c); }
+.nvgpu-v.nvgpu-bad-t  { color: var(--red-500, #f44336); }
+
+.nvgpu-spark {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin-top: 2px;
+}
+
+.nvgpu-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(128,128,128,.22);
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.nvgpu-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--blue-500, #5aa9e6);
+  transition: width .35s ease;
+}
+
+.nvgpu-bar > i.nvgpu-fill-warn { background: var(--orange-500, #e6a23c); }
+.nvgpu-bar > i.nvgpu-fill-bad  { background: var(--red-500, #f44336); }
+
+/* ---------------------------------------------------------- 明细行 */
+
+.nvgpu-rows { display: block; }
+
+.nvgpu-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 1px 0;
+  border-top: 1px solid rgba(128,128,128,.12);
+  font-size: 0.95rem;
+}
+
+.nvgpu-row > b {
+  flex: 0 0 8.5rem;
+  font-weight: 600;
+  opacity: .72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvgpu-row > span {
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.nvgpu-dim { opacity: .5; }
+.nvgpu-warn-t { color: var(--orange-500, #e6a23c); }
+.nvgpu-bad-t  { color: var(--red-500, #f44336); }
+
+.nvgpu-chip {
+  display: inline-block;
+  padding: 0 5px;
+  margin: 1px 3px 1px 0;
+  border-radius: 3px;
+  background: rgba(128,128,128,.14);
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------- 告警 */
+
+.nvgpu-flags { margin-top: 5px; }
+
+.nvgpu-flag {
+  font-size: 0.9rem;
+  padding: 2px 6px;
+  margin: 2px 0;
+  border-radius: 3px;
+  border-left: 3px solid currentColor;
+}
+
+.nvgpu-flag-warn  { color: var(--orange-500, #e6a23c); background: rgba(230,162,60,.1); }
+.nvgpu-flag-error { color: var(--red-500, #f44336);    background: rgba(244,67,54,.1); }
+
+/* ---------------------------------------------------------- 页脚 */
+
+.nvgpu-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.82rem;
+  opacity: .62;
+}
+
+.nvgpu-mode { white-space: nowrap; }
+.nvgpu-push-on  { color: var(--green-500, #4caf50); opacity: 1; }
+.nvgpu-push-off { color: var(--orange-500, #e6a23c); opacity: 1; }
+
+/* 窄屏（平板/手机）收紧 */
+@media (max-width: 900px) {
+  .nvgpu-row > b { flex-basis: 6.5rem; }
+  .nvgpu-v { font-size: 1.25rem; }
+}

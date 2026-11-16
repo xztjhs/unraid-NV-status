@@ -1,0 +1,98 @@
+#!/bin/bash
+#
+# nvidia-gpu-status :: 采样服务控制
+#   bash /etc/rc.d/rc.nvidia-gpu-status start|stop|restart|status
+#
+# 注意：/boot 是 vfat 无可执行位，.plg 里一律用 `bash <脚本>` 调用。
+
+PLUGIN="nvidia-gpu-status"
+PIDFILE="/var/run/${PLUGIN}.pid"
+LOGFILE="/var/log/${PLUGIN}.log"
+SAMPLER="/usr/local/emhttp/plugins/${PLUGIN}/include/sampler.php"
+SHM="/dev/shm/${PLUGIN}"
+
+# 采样器是 PHP CLI 脚本；用独立进程组，避免拖住 rc 脚本
+start() {
+  if [ -f "$PIDFILE" ]; then
+    local oldpid
+    oldpid=$(cat "$PIDFILE" 2>/dev/null)
+    if [ -n "$oldpid" ] && kill -0 "$oldpid" 2>/dev/null; then
+      echo "already running (pid $oldpid)"
+      return 0
+    fi
+    rm -f "$PIDFILE"
+  fi
+
+  if [ ! -x /usr/bin/nvidia-smi ]; then
+    echo "nvidia-smi not found; install the nvidia-driver plugin first"
+    return 0
+  fi
+
+  if [ ! -f "$SAMPLER" ]; then
+    echo "sampler not found: $SAMPLER"
+    return 1
+  fi
+
+  mkdir -p "$SHM"
+  # setsid + nohup：脱离当前会话，rc 脚本退出不影响
+  setsid /usr/bin/php -q "$SAMPLER" >>"$LOGFILE" 2>&1 &
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.2
+    if [ -f "$PIDFILE" ]; then
+      local newpid
+      newpid=$(cat "$PIDFILE" 2>/dev/null)
+      if [ -n "$newpid" ] && kill -0 "$newpid" 2>/dev/null; then
+        echo "started (pid $newpid)"
+        return 0
+      fi
+    fi
+  done
+  echo "failed to start; see $LOGFILE"
+  return 1
+}
+
+stop() {
+  local pid
+  pid=$(cat "$PIDFILE" 2>/dev/null)
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      sleep 0.2
+      kill -0 "$pid" 2>/dev/null || break
+    done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+    echo "stopped"
+  else
+    echo "not running"
+  fi
+  rm -f "$PIDFILE"
+
+  # 采样器会拉起 nvidia-smi 子进程；按 PIDFILE 已覆盖，这里再兜一次残留
+  pgrep -f 'nvidia-smi --query-gpu=.*-lms' >/dev/null 2>&1 && {
+    pkill -f 'nvidia-smi --query-gpu=.*-lms' 2>/dev/null
+    echo "cleaned up orphan nvidia-smi"
+  }
+  return 0
+}
+
+status() {
+  local pid
+  pid=$(cat "$PIDFILE" 2>/dev/null)
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    echo "running (pid $pid)"
+    [ -f "$SHM/latest.json" ] && echo "latest.json age: $(( $(date +%s) - $(stat -c %Y "$SHM/latest.json") ))s"
+    return 0
+  fi
+  echo "stopped"
+  return 1
+}
+
+case "$1" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) stop; sleep 0.3; start ;;
+  status)  status ;;
+  *) echo "usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac
