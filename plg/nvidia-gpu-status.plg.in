@@ -27,6 +27,16 @@
 if [ -x /etc/rc.d/rc.&name; ]; then
   bash /etc/rc.d/rc.&name; stop
 fi
+# 兜底：rc 脚本不在了但进程还活着（手动清过文件、异常升级等）
+if [ -f /var/run/&name;.pid ]; then
+  OLDPID=$(cat /var/run/&name;.pid 2>/dev/null)
+  if [ -n "$OLDPID" ] &amp;&amp; kill -0 "$OLDPID" 2>/dev/null; then
+    kill "$OLDPID" 2>/dev/null
+    sleep 1
+    kill -0 "$OLDPID" 2>/dev/null &amp;&amp; kill -9 "$OLDPID" 2>/dev/null
+  fi
+  rm -f /var/run/&name;.pid
+fi
 # 清理可能的孤儿流式进程（按精确模式，避免误伤）
 for p in $(pgrep -f 'nvidia-smi --query-gpu=.*-lms' 2>/dev/null); do
   kill "$p" 2>/dev/null

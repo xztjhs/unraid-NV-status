@@ -27,6 +27,16 @@
 if [ -x /etc/rc.d/rc.&name; ]; then
   bash /etc/rc.d/rc.&name; stop
 fi
+# 兜底：rc 脚本不在了但进程还活着（手动清过文件、异常升级等）
+if [ -f /var/run/&name;.pid ]; then
+  OLDPID=$(cat /var/run/&name;.pid 2>/dev/null)
+  if [ -n "$OLDPID" ] &amp;&amp; kill -0 "$OLDPID" 2>/dev/null; then
+    kill "$OLDPID" 2>/dev/null
+    sleep 1
+    kill -0 "$OLDPID" 2>/dev/null &amp;&amp; kill -9 "$OLDPID" 2>/dev/null
+  fi
+  rm -f /var/run/&name;.pid
+fi
 # 清理可能的孤儿流式进程（按精确模式，避免误伤）
 for p in $(pgrep -f 'nvidia-smi --query-gpu=.*-lms' 2>/dev/null); do
   kill "$p" 2>/dev/null
@@ -38,8 +48,8 @@ exit 0
 <!-- 2. 下载并安装软件包 -->
 <FILE Name="&plgPATH;/&pkgver;.txz" Run="upgradepkg --install-new">
 <URL>&raw;/archive/&pkgver;.txz</URL>
-<MD5>6de132c1e0ce48d27797dd84649ed334</MD5>
-<SHA256>191bd191779ce827d0c43d9f0301b4bf5d09744af57648844582b34197898c54</SHA256>
+<MD5>55af2e63fb067b0fbd3b3c92b8be6799</MD5>
+<SHA256>5e6a66ea884fc9b85cc6bd94e968f7a037ae1b4ce377a99432a487035bad2101</SHA256>
 </FILE>
 
 <!-- 3. 配置与服务 -->
