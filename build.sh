@@ -75,13 +75,14 @@ sed -e "s|@VER@|$VER|g" \
     -e "s|@SHA256@|$SHA|g" \
     -e "s|@RAW@|$RAW|g" \
     -e "s|@AUTHOR@|$AUTHOR|g" \
+    -e "s|@REPO@|$REPO|g" \
     -e "s|@PLUGIN@|$PLUGIN|g" \
     "$ROOT/plg/$PLUGIN.plg.in" > "$PLG"
 
 echo "==> verify"
 # .plg 是 XML：内联 shell 里的 && / < / > 必须写成实体，否则 installpkg 前就解析失败
 python3 - <<'PYEOF'
-import sys, xml.dom.minidom as m
+import sys, re, xml.dom.minidom as m
 try:
     d = m.parse('plugin/nvidia-gpu-status.plg')
     root = d.documentElement
@@ -92,9 +93,16 @@ try:
     assert urls, 'no <URL> element'
     md5s = [e.firstChild.data for e in d.getElementsByTagName('MD5') if e.firstChild]
     assert md5s, 'no <MD5> injected'
+    # 占位符必须全部替换：漏一个会让 support/pluginURL 变死链，安装时看不出、点开才 404
+    raw = open('plugin/nvidia-gpu-status.plg').read()
+    leftover = re.findall(r'@[A-Z0-9_]+@', raw)
+    assert not leftover, 'unreplaced placeholder: %s' % ', '.join(sorted(set(leftover)))
+    for a in ('support', 'pluginURL', 'launch'):
+        v = root.getAttribute(a)
+        assert v and '@' not in v, 'bad %s: %s' % (a, v)
     print('    xml ok · version=%s · url=%s' % (root.getAttribute('version'), urls[0]))
 except Exception as e:
-    print('    XML INVALID: %s' % e)
+    print('    VERIFY FAILED: %s' % e)
     sys.exit(1)
 PYEOF
 

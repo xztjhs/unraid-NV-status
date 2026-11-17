@@ -10,7 +10,7 @@
 <!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&raw;/plugin/&name;.plg" launch="&launch;" icon="microchip" min="7.0.0" support="https://github.com/xztjhs/@REPO@/issues">
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&raw;/plugin/&name;.plg" launch="&launch;" icon="microchip" min="7.0.0" support="https://github.com/xztjhs/unraid-NV-status/issues">
 
 <CHANGES>
 ### 1.0
@@ -54,8 +54,8 @@ exit 0
 <!-- 2. 下载并安装软件包 -->
 <FILE Name="&plgPATH;/&pkgver;.txz" Run="upgradepkg --install-new">
 <URL>&raw;/archive/&pkgver;.txz</URL>
-<MD5>9277cfab918a38c50b8ab97e1378adf4</MD5>
-<SHA256>0fbbc9d77edc024d47fda5b80fe0299d0ae173517d83e894435c604553c27ae6</SHA256>
+<MD5>13e9a2927fdf2cd9dcaf7d787012eaec</MD5>
+<SHA256>db06961c95045cecc3766260611e9ab971c1c66445b5e23d8cdb27ca21c901c8</SHA256>
 </FILE>
 
 <!-- 3. 配置与服务 -->

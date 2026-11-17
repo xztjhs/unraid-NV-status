@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Plugin>
+  <Name>NVIDIA GPU Status</Name>
+  <PluginURL>https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main/plugin/nvidia-gpu-status.plg</PluginURL>
+  <Support>https://github.com/xztjhs/unraid-NV-status/issues</Support>
+  <Project>https://github.com/xztjhs/unraid-NV-status</Project>
+  <Overview>Real-time NVIDIA GPU monitoring tile for the Unraid dashboard: utilization, temperature, fan, VRAM, ECC, PCIe link, encoder/decoder, power, clocks, and per-process VRAM usage with the owning container or VM resolved. Refresh 0.5-10s and history 1-60min switchable on the tile. Requires the nvidia-driver plugin.</Overview>
+  <Category>Tools:System</Category>
+  <Icon>https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main/src/usr/local/emhttp/plugins/nvidia-gpu-status/icons/nvidia-gpu-status.png</Icon>
+  <ExtraSearchTerms>gpu nvidia vram ecc pcie monitor dashboard temperature fan power</ExtraSearchTerms>
+</Plugin>

@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Containers>
-  <Container>
-    <Name>NVIDIA GPU Status</Name>
-    <Support>https://github.com/xztjhs/unraid-NV-status/issues</Support>
-    <Project>https://github.com/xztjhs/unraid-NV-status</Project>
-    <Overview>Real-time NVIDIA GPU monitoring on the Unraid dashboard: utilization, temperature, fan, VRAM, ECC, PCIe link, encoder/decoder, power, clocks and per-process VRAM usage. Refresh 0.5-10s switchable on the tile, history window 1-60min, nchan push with automatic polling fallback. Requires the nvidia-driver plugin.</Overview>
-    <Category>Tools:System</Category>
-    <Icon>https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main/src/usr/local/emhttp/plugins/nvidia-gpu-status/icons/nvidia-gpu-status.png</Icon>
-    <Plugin>https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main/plugin/nvidia-gpu-status.plg</Plugin>
-  </Container>
-</Containers>
+<CommunityApplications>
+  <!-- 仓库概览：Community Apps 里显示在维护者档案下的说明 -->
+  <Profile>NVIDIA GPU status tile for the Unraid dashboard. Shows per-GPU utilization, temperature, fan speed, VRAM, ECC counters, PCIe link state, encoder/decoder load, power draw, clocks, and per-process VRAM usage with the owning container or virtual machine resolved. Sampling runs as a host-side daemon reading a long-lived nvidia-smi stream, so sub-second refresh costs about 1% of a CPU; the tile updates live over nchan with an automatic HTTP polling fallback. Requires the nvidia-driver plugin, which provides nvidia-smi.</Profile>
+  <Icon>https://raw.githubusercontent.com/xztjhs/unraid-NV-status/main/src/usr/local/emhttp/plugins/nvidia-gpu-status/icons/nvidia-gpu-status.png</Icon>
+  <WebPage>https://github.com/xztjhs/unraid-NV-status</WebPage>
+  <!-- 论坛支持帖建好后取消注释并填入真实链接：
+  <Forum>https://forums.unraid.net/topic/xxxxx-nvidia-gpu-status/</Forum>
+  -->
+</CommunityApplications>

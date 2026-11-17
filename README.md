@@ -43,7 +43,13 @@ Everything runs on the host: a PHP CLI sampler, an nchan push channel, and a das
 
 ## Install
 
-### From the Unraid UI (recommended)
+### From Community Applications (once listed)
+
+Apps → search **NVIDIA GPU Status** → Install.
+
+The listing is pending review; until it appears, use the manual method below.
+
+### Manual (works right now)
 
 Plugins → **Install Plugin** → paste:
 
